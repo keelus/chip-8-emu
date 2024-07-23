@@ -10,10 +10,10 @@
 const WIDTH: usize = 64;
 const HEIGHT: usize = 32;
 
-pub struct Display([u64; HEIGHT]);
+pub struct Screen([u64; HEIGHT]);
 
-impl Display {
-    pub fn new() -> Display {
-        Display { 0: [0; HEIGHT] }
+impl Screen {
+    pub fn new() -> Screen {
+        Screen { 0: [0; HEIGHT] }
     }
 }

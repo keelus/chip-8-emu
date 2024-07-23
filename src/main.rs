@@ -8,5 +8,10 @@
 // https://github.com/keelus/chip-8-emu
 
 mod core;
+use core::cpu::Cpu;
 
-fn main() {}
+const PROGRAM_BEGIN: u16 = 0x0200;
+
+fn main() {
+    let cpu = Cpu::new(vec![], PROGRAM_BEGIN);
+}

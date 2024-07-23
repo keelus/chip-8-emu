@@ -15,3 +15,16 @@ pub struct Registers {
     sp: u8,
     stack: [u16; 16],
 }
+
+impl Registers {
+    pub fn new(pc_begin: u16) -> Registers {
+        Registers {
+            v: [0; 16],
+            i: 0,
+            timers: [0; 2],
+            pc: pc_begin,
+            sp: 0,
+            stack: [0; 16],
+        }
+    }
+}

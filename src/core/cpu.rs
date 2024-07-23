@@ -7,10 +7,22 @@
 //
 // https://github.com/keelus/chip-8-emu
 
-pub struct Cpu {}
+use super::{keypad::Keypad, memory::Memory, registers::Registers, screen::Screen};
+
+pub struct Cpu {
+    registers: Registers,
+    memory: Memory,
+    screen: Screen,
+    keypad: Keypad,
+}
 
 impl Cpu {
-    pub fn new() -> Cpu {
-        Cpu {}
+    pub fn new(program: Vec<u8>, program_begin: u16) -> Cpu {
+        Cpu {
+            registers: Registers::new(program_begin),
+            memory: Memory::new(program, program_begin),
+            screen: Screen::new(),
+            keypad: Keypad::new(),
+        }
     }
 }

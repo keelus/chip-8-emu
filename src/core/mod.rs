@@ -1,5 +1,5 @@
-mod cpu;
-mod display;
-mod keypad;
-mod memory;
-mod registers;
+pub mod cpu;
+pub mod keypad;
+pub mod memory;
+pub mod registers;
+pub mod screen;
