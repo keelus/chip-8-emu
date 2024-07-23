@@ -13,5 +13,6 @@ use core::cpu::Cpu;
 const PROGRAM_BEGIN: u16 = 0x0200;
 
 fn main() {
-    let cpu = Cpu::new(vec![], PROGRAM_BEGIN);
+    let mut cpu = Cpu::new(vec![0x80, 0x32], PROGRAM_BEGIN);
+    cpu.tick();
 }

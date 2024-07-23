@@ -7,7 +7,7 @@
 //
 // https://github.com/keelus/chip-8-emu
 
-use core::panicking::panic;
+use std::ops::Shr;
 
 use super::{keypad::Keypad, memory::Memory, registers::Registers, screen::Screen};
 
@@ -31,7 +31,7 @@ impl Cpu {
     pub fn tick(&mut self) {
         let instruction = self.memory.read_instruction(self.registers.pc);
 
-        match instruction {
+        match instruction.parts() {
             (0, 0, 0xE, 0) => panic!("CLS not implemented."),
             (0, 0, 0xE, 0xE) => panic!("RET not implemented."),
             (0, _, _, _) => panic!("SYS not implemented."),
@@ -40,15 +40,77 @@ impl Cpu {
             (3, _, _, _) => panic!("SE|b not implemented."),
             (4, _, _, _) => panic!("SNE|b not implemented."),
             (5, _, _, 0) => panic!("SE|vy not implemented."),
-            (6, _, _, _) => panic!("LD not implemented."),
-            (7, _, _, _) => panic!("ADD not implemented."),
-            (8, _, _, 0) => panic!("LD not implemented."),
-            (8, _, _, 1) => panic!("OR not implemented."),
-            (8, _, _, 2) => panic!("AND not implemented."),
-            (8, _, _, 3) => panic!("XOR not implemented."),
-            (8, _, _, 4) => panic!("ADD not implemented."),
-            (8, _, _, 5) => panic!("SUB not implemented."),
-            (8, _, _, 6) => panic!("SHR not implemented."),
+            (6, _, _, _) => {
+                // LD
+                let x = instruction.x();
+                let kk = instruction.kk();
+                self.registers.v[x as usize] = kk;
+            }
+            (7, _, _, _) => {
+                // ADD (no carry)
+                let x = instruction.x();
+                let vx = self.registers.v[x as usize];
+                let vx = vx.wrapping_add(x);
+                self.registers.v[x as usize] = vx;
+            }
+            (8, _, _, 0) => {
+                // LD
+                let x = instruction.x();
+                let y = instruction.y();
+                self.registers.v[x as usize] = self.registers.v[y as usize];
+            }
+            (8, _, _, 1) => {
+                // OR
+                let x = instruction.x();
+                let y = instruction.y();
+                let vx = self.registers.v[x as usize];
+                let vy = self.registers.v[y as usize];
+                self.registers.v[x as usize] = vx | vy;
+            }
+            (8, _, _, 2) => {
+                // AND
+                let x = instruction.x();
+                let y = instruction.y();
+                let vx = self.registers.v[x as usize];
+                let vy = self.registers.v[y as usize];
+                self.registers.v[x as usize] = vx & vy;
+            }
+            (8, _, _, 3) => {
+                // XOR
+                let x = instruction.x();
+                let y = instruction.y();
+                let vx = self.registers.v[x as usize];
+                let vy = self.registers.v[y as usize];
+                self.registers.v[x as usize] = vx ^ vy;
+            }
+            (8, _, _, 4) => {
+                // ADD
+                let x = instruction.x();
+                let y = instruction.x();
+                let vx = self.registers.v[x as usize];
+                let vy = self.registers.v[y as usize];
+                let (vx, overflows) = vx.overflowing_add(vy);
+                self.registers.v[x as usize] = vx;
+                self.registers.v[0x0F] = if overflows { 1 } else { 0 };
+            }
+            (8, _, _, 5) => {
+                // SUB
+                let x = instruction.x();
+                let y = instruction.x();
+                let vx = self.registers.v[x as usize];
+                let vy = self.registers.v[y as usize];
+                let (vx, overflows) = vx.overflowing_sub(vy);
+                self.registers.v[x as usize] = vx;
+                self.registers.v[0x0F] = if overflows { 1 } else { 0 };
+            }
+            (8, _, _, 6) => {
+                // SHR
+                let x = instruction.x();
+                let vx = self.registers.v[x as usize];
+                self.registers.v[0x0F] = if vx & 0x1 != 0 { 1 } else { 0 };
+                let vx = vx >> 1;
+                self.registers.v[x as usize] = vx;
+            }
             (8, _, _, 7) => panic!("SUBN not implemented."),
             (8, _, _, 0xE) => panic!("SHL not implemented."), // E ?
             (9, _, _, 0) => panic!("SNE|vy not implemented."),
@@ -69,5 +131,7 @@ impl Cpu {
             (0xF, _, 6, 5) => panic!("LD not implemented."),
             _ => panic!("Unknown instruction."),
         }
+
+        self.registers.pc += 2
     }
 }

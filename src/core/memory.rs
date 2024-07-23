@@ -7,6 +7,8 @@
 //
 // https://github.com/keelus/chip-8-emu
 
+use super::instruction::Instruction;
+
 const MEMORY_SIZE: usize = 4096;
 
 // Memory structure:
@@ -49,7 +51,7 @@ impl Memory {
         msb << 8 | lsb
     }
 
-    pub fn read_instruction(&self, addr: u16) -> (u8, u8, u8, u8) {
+    pub fn read_instruction(&self, addr: u16) -> Instruction {
         let data = self.read_u16(addr);
 
         let p1 = ((data >> 12) & 0xF) as u8;
@@ -57,7 +59,7 @@ impl Memory {
         let p3 = ((data >> 4) & 0xF) as u8;
         let p4 = (data & 0xF) as u8;
 
-        (p1, p2, p3, p4)
+        Instruction::new((p1, p2, p3, p4))
     }
 }
 
@@ -69,9 +71,9 @@ mod memory_tests {
     fn test_read_instruction() {
         let mem = Memory::new(vec![0x12, 0x34], 0x0200);
         let instruction = mem.read_instruction(0x0200);
-        assert_eq!(instruction.0, 0x01);
-        assert_eq!(instruction.1, 0x02);
-        assert_eq!(instruction.2, 0x03);
-        assert_eq!(instruction.3, 0x04);
+        assert_eq!(instruction.parts().0, 0x01);
+        assert_eq!(instruction.parts().1, 0x02);
+        assert_eq!(instruction.parts().2, 0x03);
+        assert_eq!(instruction.parts().3, 0x04);
     }
 }
