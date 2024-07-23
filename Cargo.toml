@@ -1,0 +1,7 @@
+[package]
+name = "chip-8-emu"
+version = "0.1.0"
+authors = ["Hugo Moreda (keelus)]"]
+edition = "2021"
+
+[dependencies]
