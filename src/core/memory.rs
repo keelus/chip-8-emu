@@ -39,4 +39,39 @@ impl Memory {
     pub fn read(&mut self, addr: u16) -> u8 {
         self.0[addr as usize]
     }
+
+    pub fn read_u16(&self, addr: u16) -> u16 {
+        let addr = addr as usize;
+
+        let msb = self.0[addr] as u16;
+        let lsb = self.0[addr + 1] as u16;
+
+        msb << 8 | lsb
+    }
+
+    pub fn read_instruction(&self, addr: u16) -> (u8, u8, u8, u8) {
+        let data = self.read_u16(addr);
+
+        let p1 = ((data >> 12) & 0xF) as u8;
+        let p2 = ((data >> 8) & 0xF) as u8;
+        let p3 = ((data >> 4) & 0xF) as u8;
+        let p4 = (data & 0xF) as u8;
+
+        (p1, p2, p3, p4)
+    }
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::Memory;
+
+    #[test]
+    fn test_read_instruction() {
+        let mem = Memory::new(vec![0x12, 0x34], 0x0200);
+        let instruction = mem.read_instruction(0x0200);
+        assert_eq!(instruction.0, 0x01);
+        assert_eq!(instruction.1, 0x02);
+        assert_eq!(instruction.2, 0x03);
+        assert_eq!(instruction.3, 0x04);
+    }
 }
