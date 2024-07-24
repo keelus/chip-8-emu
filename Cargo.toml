@@ -5,3 +5,4 @@ authors = ["Hugo Moreda (keelus)]"]
 edition = "2021"
 
 [dependencies]
+rand = "0.8.5"
