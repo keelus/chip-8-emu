@@ -208,7 +208,19 @@ impl Cpu {
                 self.registers.i = i;
             }
             (0xF, _, 2, 9) => panic!("LD not implemented."),
-            (0xF, _, 3, 3) => panic!("LD not implemented."),
+            (0xF, _, 3, 3) => {
+                let x = instruction.x();
+                let vx = self.registers.v[x as usize];
+                let i = self.registers.i;
+
+                let hundreds = vx / 100;
+                let tens = (vx / 10) % 10;
+                let ones = vx % 10;
+
+                self.memory.write(i, hundreds);
+                self.memory.write(i + 1, tens);
+                self.memory.write(i + 2, ones);
+            }
             (0xF, _, 5, 5) => {
                 // LD [x inclusive. TODO: Check if I is updated]
                 let x = instruction.x();
@@ -498,6 +510,17 @@ mod instruction_tests {
     }
 
     #[test]
+    fn test_ld_fx33() {
+        let mut cpu = Cpu::new(vec![0xF0, 0x33], 0x0200);
+        cpu.registers.v[0] = 0xC4; // 196
+        cpu.registers.i = 0x500;
+        cpu.tick();
+        assert_eq!(cpu.memory.read(0x500), 1);
+        assert_eq!(cpu.memory.read(0x501), 9);
+        assert_eq!(cpu.memory.read(0x502), 6);
+    }
+
+    #[test]
     fn test_ld_fx55_first_four() {
         let mut cpu = Cpu::new(vec![0xF3, 0x55], 0x0200);
         cpu.registers.v[0] = 0x12;
@@ -507,11 +530,11 @@ mod instruction_tests {
         cpu.registers.v[4] = 0x9a;
         cpu.registers.i = 0x500;
         cpu.tick();
-        assert_eq!(cpu.memory.read(0x500 + 0x0), 0x12);
-        assert_eq!(cpu.memory.read(0x500 + 0x1), 0x34);
-        assert_eq!(cpu.memory.read(0x500 + 0x2), 0x56);
-        assert_eq!(cpu.memory.read(0x500 + 0x3), 0x78);
-        assert_eq!(cpu.memory.read(0x500 + 0x4), 0x00);
+        assert_eq!(cpu.memory.read(0x500), 0x12);
+        assert_eq!(cpu.memory.read(0x501), 0x34);
+        assert_eq!(cpu.memory.read(0x502), 0x56);
+        assert_eq!(cpu.memory.read(0x503), 0x78);
+        assert_eq!(cpu.memory.read(0x504), 0x00);
     }
     #[test]
     fn test_ld_fx55_one() {
@@ -520,8 +543,8 @@ mod instruction_tests {
         cpu.registers.v[1] = 0x34;
         cpu.registers.i = 0x500;
         cpu.tick();
-        assert_eq!(cpu.memory.read(0x500 + 0x0), 0x12);
-        assert_eq!(cpu.memory.read(0x500 + 0x1), 0x00);
+        assert_eq!(cpu.memory.read(0x500), 0x12);
+        assert_eq!(cpu.memory.read(0x501), 0x00);
     }
 
     #[test]
