@@ -40,14 +40,38 @@ impl Cpu {
 
         match instruction.parts() {
             (0, 0, 0xE, 0) => panic!("CLS not implemented."),
-            (0, 0, 0xE, 0xE) => panic!("RET not implemented."),
+            (0, 0, 0xE, 0xE) => {
+                // RET
+                let (mut sp, overflows) = self.registers.sp.overflowing_sub(1);
+                if overflows {
+                    sp = 0xF;
+                }
+                let pc = self.registers.stack[sp as usize];
+
+                self.registers.sp = sp;
+                self.registers.pc = pc;
+            }
             (0, _, _, _) => panic!("SYS not implemented."),
             (1, _, _, _) => {
                 // JP
                 let nnn = instruction.nnn();
                 self.registers.pc = nnn.wrapping_sub(2); // So tick()'s pc+=2 at the end doesn't affect
             }
-            (2, _, _, _) => panic!("CALL not implemented."),
+            (2, _, _, _) => {
+                // CALL
+                let nnn = instruction.nnn();
+
+                let sp = self.registers.sp;
+                self.registers.stack[sp as usize] = self.registers.pc;
+
+                let (mut sp, overflows) = sp.overflowing_add(1);
+                if overflows {
+                    sp = 0x0;
+                }
+
+                self.registers.sp = sp;
+                self.registers.pc = nnn.wrapping_sub(2);
+            }
             (3, _, _, _) => {
                 // SE
                 let kk = instruction.kk();
@@ -287,8 +311,17 @@ mod instruction_tests {
     use crate::core::cpu::Cpu;
 
     // CLS
-    // RET
     // SYS
+
+    #[test]
+    fn test_ret_00ee() {
+        let mut cpu = Cpu::new(vec![0x00, 0xEE], 0x0200);
+        cpu.registers.sp = 0;
+        cpu.registers.stack[0xF] = 0x0300;
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x302);
+        assert_eq!(cpu.registers.sp, 0xF);
+    }
 
     #[test]
     fn test_jp_1nnn() {
@@ -297,7 +330,14 @@ mod instruction_tests {
         assert_eq!(cpu.registers.pc, 0x123);
     }
 
-    // CALL
+    #[test]
+    fn test_call_2nnn() {
+        let mut cpu = Cpu::new(vec![0x21, 0x23], 0x0200);
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x123);
+        assert_eq!(cpu.registers.sp, 1);
+        assert_eq!(cpu.registers.stack[0], 0x0200);
+    }
 
     #[test]
     fn test_se_3xkk_no_skip() {
