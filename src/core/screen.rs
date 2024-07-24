@@ -16,4 +16,8 @@ impl Screen {
     pub fn new() -> Screen {
         Screen { 0: [0; HEIGHT] }
     }
+
+    pub fn clear(&mut self) {
+        self.0.fill(0);
+    }
 }

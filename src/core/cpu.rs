@@ -39,7 +39,10 @@ impl Cpu {
         let instruction = self.memory.read_instruction(self.registers.pc);
 
         match instruction.parts() {
-            (0, 0, 0xE, 0) => panic!("CLS not implemented."),
+            (0, 0, 0xE, 0) => {
+                // CLS - 00e0
+                self.screen.clear();
+            }
             (0, 0, 0xE, 0xE) => {
                 // RET - 00ee
                 let (mut sp, overflows) = self.registers.sp.overflowing_sub(1);
