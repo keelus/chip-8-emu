@@ -11,7 +11,12 @@ use std::ops::Shr;
 
 use rand::Rng;
 
-use super::{keypad::Keypad, memory::Memory, registers::Registers, screen::Screen};
+use super::{
+    keypad::Keypad,
+    memory::{Memory, HEX_SPRITES_START_MEM},
+    registers::Registers,
+    screen::Screen,
+};
 
 pub struct Cpu {
     pub registers: Registers,
@@ -193,10 +198,35 @@ impl Cpu {
                 self.registers.v[x as usize] = rnd;
             }
             (0xD, _, _, _) => panic!("DRW not implemented."),
-            (0xE, _, 9, 0xE) => panic!("SKP not implemented."),
-            (0xE, _, 0xA, 1) => panic!("SKNP not implemented."),
+            (0xE, _, 9, 0xE) => {
+                let x = instruction.x();
+                let vx = self.registers.v[x as usize];
+                let is_down = self.keypad.get_key_state(vx);
+
+                if is_down {
+                    self.registers.pc += 2;
+                }
+            }
+            (0xE, _, 0xA, 1) => {
+                let x = instruction.x();
+                let vx = self.registers.v[x as usize];
+                let is_down = self.keypad.get_key_state(vx);
+
+                if !is_down {
+                    self.registers.pc += 2;
+                }
+            }
             (0xF, _, 0, 7) => panic!("LD not implemented."),
-            (0xF, _, 0, 0xA) => panic!("LD not implemented."),
+            (0xF, _, 0, 0xA) => {
+                let key = self.keypad.get_released_key();
+
+                if let Some(key) = key {
+                    let x = instruction.x();
+                    self.registers.v[x as usize] = key;
+                } else {
+                    self.registers.pc -= 2;
+                }
+            }
             (0xF, _, 1, 5) => panic!("LD not implemented."),
             (0xF, _, 1, 8) => panic!("LD not implemented."),
             (0xF, _, 1, 0xE) => {
@@ -207,7 +237,11 @@ impl Cpu {
                 let i = i.wrapping_add(vx);
                 self.registers.i = i;
             }
-            (0xF, _, 2, 9) => panic!("LD not implemented."),
+            (0xF, _, 2, 9) => {
+                let x = instruction.x() as u16;
+                let addr = HEX_SPRITES_START_MEM.wrapping_add(x);
+                self.registers.i = addr;
+            }
             (0xF, _, 3, 3) => {
                 let x = instruction.x();
                 let vx = self.registers.v[x as usize];
@@ -497,6 +531,54 @@ mod instruction_tests {
         cpu.registers.v[0] = 0x53;
         cpu.tick();
         assert_eq!(cpu.registers.pc, 0x456);
+    }
+
+    #[test]
+    fn test_skp_ex9e_no_skip() {
+        let mut cpu = Cpu::new(vec![0xE0, 0x9E], 0x0200);
+        cpu.registers.v[0] = 0x6;
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0202);
+    }
+    #[test]
+    fn test_skp_ex9e_skip() {
+        let mut cpu = Cpu::new(vec![0xE0, 0x9E], 0x0200);
+        cpu.registers.v[0] = 0x6;
+        cpu.keypad.set_key(0x06, true);
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0204);
+    }
+
+    #[test]
+    fn test_skp_exa1_no_skip() {
+        let mut cpu = Cpu::new(vec![0xE0, 0xA1], 0x0200);
+        cpu.registers.v[0] = 0x6;
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0204);
+    }
+    #[test]
+    fn test_skp_exa1_skip() {
+        let mut cpu = Cpu::new(vec![0xE0, 0xA1], 0x0200);
+        cpu.registers.v[0] = 0x6;
+        cpu.keypad.set_key(0x06, true);
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0202);
+    }
+
+    #[test]
+    fn test_ld_fx0a() {
+        let mut cpu = Cpu::new(vec![0xF0, 0x0A], 0x0200);
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0200);
+        assert_eq!(cpu.registers.v[0], 0x0);
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0200);
+        assert_eq!(cpu.registers.v[0], 0x0);
+        cpu.keypad.set_key(0x7, true);
+        cpu.keypad.set_key(0x7, false);
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0202);
+        assert_eq!(cpu.registers.v[0], 0x7);
     }
 
     #[test]

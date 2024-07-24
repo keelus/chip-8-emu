@@ -7,7 +7,7 @@ use std::collections::HashMap;
 // A 0 B F    Z X C V
 //
 pub struct Keypad {
-    key_map: HashMap<u8, bool>,
+    key_map: HashMap<u8, bool>, // Down = true, Up = false
     last_key: Option<u8>,
 }
 
@@ -28,6 +28,10 @@ impl Keypad {
         }
 
         *entry = state;
+    }
+
+    pub fn get_key_state(&mut self, idx: u8) -> bool {
+        *self.key_map.get(&idx).unwrap()
     }
 
     // Note: get_released_key() consumes the last_key (if any)
