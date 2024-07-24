@@ -7,10 +7,11 @@
 //
 // https://github.com/keelus/chip-8-emu
 
-const WIDTH: usize = 64;
-const HEIGHT: usize = 32;
+// Must be a 64 x 32 screen, as for rows we are using u64(width) words.
+pub const WIDTH: usize = 64;
+pub const HEIGHT: usize = 32;
 
-pub struct Screen([u64; HEIGHT]);
+pub struct Screen(pub [u64; HEIGHT]);
 
 impl Screen {
     pub fn new() -> Screen {
