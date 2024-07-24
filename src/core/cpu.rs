@@ -41,7 +41,7 @@ impl Cpu {
         match instruction.parts() {
             (0, 0, 0xE, 0) => panic!("CLS not implemented."),
             (0, 0, 0xE, 0xE) => {
-                // RET
+                // RET - 00ee
                 let (mut sp, overflows) = self.registers.sp.overflowing_sub(1);
                 if overflows {
                     sp = 0xF;
@@ -53,12 +53,12 @@ impl Cpu {
             }
             (0, _, _, _) => panic!("SYS not implemented."),
             (1, _, _, _) => {
-                // JP
+                // JP - 1nnn
                 let nnn = instruction.nnn();
                 self.registers.pc = nnn.wrapping_sub(2); // So tick()'s pc+=2 at the end doesn't affect
             }
             (2, _, _, _) => {
-                // CALL
+                // CALL - 2nnn
                 let nnn = instruction.nnn();
 
                 let sp = self.registers.sp;
@@ -73,7 +73,7 @@ impl Cpu {
                 self.registers.pc = nnn.wrapping_sub(2);
             }
             (3, _, _, _) => {
-                // SE
+                // SE - 3xkk
                 let kk = instruction.kk();
                 let x = instruction.x();
                 let vx = self.registers.v[x as usize];
@@ -83,7 +83,7 @@ impl Cpu {
                 }
             }
             (4, _, _, _) => {
-                // SNE
+                // SNE - 4xkk
                 let kk = instruction.kk();
                 let x = instruction.x();
                 let vx = self.registers.v[x as usize];
@@ -93,7 +93,7 @@ impl Cpu {
                 }
             }
             (5, _, _, 0) => {
-                // SE
+                // SE - 5xy0
                 let x = instruction.x();
                 let y = instruction.y();
                 let vx = self.registers.v[x as usize];
@@ -104,13 +104,13 @@ impl Cpu {
                 }
             }
             (6, _, _, _) => {
-                // LD
+                // LD - 6xkk
                 let x = instruction.x();
                 let kk = instruction.kk();
                 self.registers.v[x as usize] = kk;
             }
             (7, _, _, _) => {
-                // ADD (no carry)
+                // ADD (no carry) - 7xkk
                 let x = instruction.x();
                 let kk = instruction.kk();
                 let vx = self.registers.v[x as usize];
@@ -118,13 +118,13 @@ impl Cpu {
                 self.registers.v[x as usize] = vx;
             }
             (8, _, _, 0) => {
-                // LD
+                // LD - 8xy0
                 let x = instruction.x();
                 let y = instruction.y();
                 self.registers.v[x as usize] = self.registers.v[y as usize];
             }
             (8, _, _, 1) => {
-                // OR
+                // OR - 8xy1
                 let x = instruction.x();
                 let y = instruction.y();
                 let vx = self.registers.v[x as usize];
@@ -132,7 +132,7 @@ impl Cpu {
                 self.registers.v[x as usize] = vx | vy;
             }
             (8, _, _, 2) => {
-                // AND
+                // AND - 8xy2
                 let x = instruction.x();
                 let y = instruction.y();
                 let vx = self.registers.v[x as usize];
@@ -140,7 +140,7 @@ impl Cpu {
                 self.registers.v[x as usize] = vx & vy;
             }
             (8, _, _, 3) => {
-                // XOR
+                // XOR - 8xy3
                 let x = instruction.x();
                 let y = instruction.y();
                 let vx = self.registers.v[x as usize];
@@ -148,7 +148,7 @@ impl Cpu {
                 self.registers.v[x as usize] = vx ^ vy;
             }
             (8, _, _, 4) => {
-                // ADD
+                // ADD - 8xy4
                 let x = instruction.x();
                 let y = instruction.y();
                 let vx = self.registers.v[x as usize];
@@ -158,7 +158,7 @@ impl Cpu {
                 self.registers.v[0x0F] = if overflows { 1 } else { 0 };
             }
             (8, _, _, 5) => {
-                // SUB
+                // SUB - 8xy5
                 let x = instruction.x();
                 let y = instruction.y();
                 let vx = self.registers.v[x as usize];
@@ -168,7 +168,7 @@ impl Cpu {
                 self.registers.v[0x0F] = if overflows { 1 } else { 0 };
             }
             (8, _, _, 6) => {
-                // SHR
+                // SHR - 8xy6
                 let x = instruction.x();
                 let vx = self.registers.v[x as usize];
                 self.registers.v[0x0F] = if vx & 0x1 != 0 { 1 } else { 0 };
@@ -176,7 +176,7 @@ impl Cpu {
                 self.registers.v[x as usize] = vx;
             }
             (8, _, _, 7) => {
-                // SUBN
+                // SUBN - 8xy7
                 let x = instruction.x();
                 let y = instruction.y();
                 let vx = self.registers.v[x as usize];
@@ -186,7 +186,7 @@ impl Cpu {
                 self.registers.v[0x0F] = if overflows { 1 } else { 0 };
             }
             (8, _, _, 0xE) => {
-                // SHL
+                // SHL - 8xye
                 let x = instruction.x();
                 let vx = self.registers.v[x as usize];
                 self.registers.v[0x0F] = if vx & 0x80 != 0 { 1 } else { 0 };
@@ -194,7 +194,7 @@ impl Cpu {
                 self.registers.v[x as usize] = vx;
             }
             (9, _, _, 0) => {
-                // SNE
+                // SNE - 9xy0
                 let x = instruction.x();
                 let y = instruction.y();
                 let vx = self.registers.v[x as usize];
@@ -205,16 +205,19 @@ impl Cpu {
                 }
             }
             (0xA, _, _, _) => {
+                // LD - annn
                 let nnn = instruction.nnn();
                 self.registers.i = nnn;
             }
             (0xB, _, _, _) => {
+                // JP - bnnn
                 let nnn = instruction.nnn();
                 let v0 = self.registers.v[0] as u16;
                 let pc = nnn.wrapping_add(v0);
                 self.registers.pc = pc.wrapping_sub(2);
             }
             (0xC, _, _, _) => {
+                // RND - cxkk
                 let x = instruction.x();
                 let kk = instruction.kk();
                 let rnd: u8 = rand::thread_rng().gen_range(0..=255);
@@ -223,6 +226,7 @@ impl Cpu {
             }
             (0xD, _, _, _) => panic!("DRW not implemented."),
             (0xE, _, 9, 0xE) => {
+                // SKP - ex9e
                 let x = instruction.x();
                 let vx = self.registers.v[x as usize];
                 let is_down = self.keypad.get_key_state(vx);
@@ -232,6 +236,7 @@ impl Cpu {
                 }
             }
             (0xE, _, 0xA, 1) => {
+                // SKNP - exa1
                 let x = instruction.x();
                 let vx = self.registers.v[x as usize];
                 let is_down = self.keypad.get_key_state(vx);
@@ -242,6 +247,7 @@ impl Cpu {
             }
             (0xF, _, 0, 7) => panic!("LD not implemented."),
             (0xF, _, 0, 0xA) => {
+                // LD - fx0a
                 let key = self.keypad.get_released_key();
 
                 if let Some(key) = key {
@@ -254,7 +260,7 @@ impl Cpu {
             (0xF, _, 1, 5) => panic!("LD not implemented."),
             (0xF, _, 1, 8) => panic!("LD not implemented."),
             (0xF, _, 1, 0xE) => {
-                // ADD (no carry)
+                // ADD (no carry) - fx1e
                 let x = instruction.x();
                 let vx = self.registers.v[x as usize] as u16;
                 let i = self.registers.i;
@@ -262,11 +268,13 @@ impl Cpu {
                 self.registers.i = i;
             }
             (0xF, _, 2, 9) => {
+                // LD - fx29
                 let x = instruction.x() as u16;
                 let addr = HEX_SPRITES_START_MEM.wrapping_add(x);
                 self.registers.i = addr;
             }
             (0xF, _, 3, 3) => {
+                // LD - fx33
                 let x = instruction.x();
                 let vx = self.registers.v[x as usize];
                 let i = self.registers.i;
@@ -280,7 +288,7 @@ impl Cpu {
                 self.memory.write(i + 2, ones);
             }
             (0xF, _, 5, 5) => {
-                // LD [x inclusive. TODO: Check if I is updated]
+                // LD [x inclusive. TODO: Check if I is updated] - fx55
                 let x = instruction.x();
                 let mut addr = self.registers.i;
                 for idx in 0..=x {
@@ -290,7 +298,7 @@ impl Cpu {
                 }
             }
             (0xF, _, 6, 5) => {
-                // LD [x inclusive. TODO: Check if I is updated]
+                // LD [x inclusive. TODO: Check if I is updated] - fx65
                 let x = instruction.x();
                 let mut addr = self.registers.i;
                 for idx in 0..=x {
