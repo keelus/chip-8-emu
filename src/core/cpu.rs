@@ -37,11 +37,43 @@ impl Cpu {
             (0, 0, 0xE, 0) => panic!("CLS not implemented."),
             (0, 0, 0xE, 0xE) => panic!("RET not implemented."),
             (0, _, _, _) => panic!("SYS not implemented."),
-            (1, _, _, _) => panic!("JP not implemented."),
+            (1, _, _, _) => {
+                // JP
+                let nnn = instruction.nnn();
+                self.registers.pc = nnn.wrapping_sub(2); // So tick()'s pc+=2 at the end doesn't affect
+            }
             (2, _, _, _) => panic!("CALL not implemented."),
-            (3, _, _, _) => panic!("SE|b not implemented."),
-            (4, _, _, _) => panic!("SNE|b not implemented."),
-            (5, _, _, 0) => panic!("SE|vy not implemented."),
+            (3, _, _, _) => {
+                // SE
+                let kk = instruction.kk();
+                let x = instruction.x();
+                let vx = self.registers.v[x as usize];
+
+                if vx == kk {
+                    self.registers.pc += 2
+                }
+            }
+            (4, _, _, _) => {
+                // SNE
+                let kk = instruction.kk();
+                let x = instruction.x();
+                let vx = self.registers.v[x as usize];
+
+                if vx != kk {
+                    self.registers.pc += 2
+                }
+            }
+            (5, _, _, 0) => {
+                // SE
+                let x = instruction.x();
+                let y = instruction.y();
+                let vx = self.registers.v[x as usize];
+                let vy = self.registers.v[y as usize];
+
+                if vx == vy {
+                    self.registers.pc += 2
+                }
+            }
             (6, _, _, _) => {
                 // LD
                 let x = instruction.x();
@@ -151,7 +183,7 @@ impl Cpu {
                 let nnn = instruction.nnn();
                 let v0 = self.registers.v[0] as u16;
                 let pc = nnn.wrapping_add(v0);
-                self.registers.pc = pc.wrapping_sub(2); // So later pc+=2 doesn't affect
+                self.registers.pc = pc.wrapping_sub(2);
             }
             (0xC, _, _, _) => {
                 let x = instruction.x();
@@ -207,6 +239,66 @@ impl Cpu {
 #[cfg(test)]
 mod instruction_tests {
     use crate::core::cpu::Cpu;
+
+    // CLS
+    // RET
+    // SYS
+
+    #[test]
+    fn test_jp_1nnn() {
+        let mut cpu = Cpu::new(vec![0x11, 0x23], 0x0200);
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x123);
+    }
+
+    // CALL
+
+    #[test]
+    fn test_se_3xkk_no_skip() {
+        let mut cpu = Cpu::new(vec![0x30, 0x55], 0x0200);
+        cpu.registers.v[0x0] = 0x15;
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0202);
+    }
+    #[test]
+    fn test_se_3xkk_skip() {
+        let mut cpu = Cpu::new(vec![0x30, 0x55], 0x0200);
+        cpu.registers.v[0x0] = 0x55;
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0204);
+    }
+
+    #[test]
+    fn test_sne_3xkk_no_skip() {
+        let mut cpu = Cpu::new(vec![0x40, 0x55], 0x0200);
+        cpu.registers.v[0x0] = 0x55;
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0202);
+    }
+    #[test]
+    fn test_sne_4xkk_skip() {
+        let mut cpu = Cpu::new(vec![0x40, 0x55], 0x0200);
+        cpu.registers.v[0x0] = 0x15;
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0204);
+    }
+
+    #[test]
+    fn test_se_5xy0_no_skip() {
+        let mut cpu = Cpu::new(vec![0x50, 0x10], 0x0200);
+        cpu.registers.v[0x0] = 0x28;
+        cpu.registers.v[0x1] = 0x55;
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0202);
+    }
+    #[test]
+    fn test_se_5xy0_skip() {
+        let mut cpu = Cpu::new(vec![0x50, 0x10], 0x0200);
+        cpu.registers.v[0x0] = 0x15;
+        cpu.registers.v[0x1] = 0x15;
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x0204);
+    }
 
     #[test]
     fn test_ld_6xkk() {
