@@ -64,8 +64,8 @@ impl Cpu {
                 let sp = self.registers.sp;
                 self.registers.stack[sp as usize] = self.registers.pc;
 
-                let (mut sp, overflows) = sp.overflowing_add(1);
-                if overflows {
+                let mut sp = sp + 1;
+                if sp > 0xF {
                     sp = 0x0;
                 }
 
@@ -322,6 +322,15 @@ mod instruction_tests {
         assert_eq!(cpu.registers.pc, 0x302);
         assert_eq!(cpu.registers.sp, 0xF);
     }
+    #[test]
+    fn test_ret_00ee_full() {
+        let mut cpu = Cpu::new(vec![0x00, 0xEE], 0x0200);
+        cpu.registers.sp = 0x1;
+        cpu.registers.stack[0x0] = 0x0300;
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x302);
+        assert_eq!(cpu.registers.sp, 0x0);
+    }
 
     #[test]
     fn test_jp_1nnn() {
@@ -337,6 +346,15 @@ mod instruction_tests {
         assert_eq!(cpu.registers.pc, 0x123);
         assert_eq!(cpu.registers.sp, 1);
         assert_eq!(cpu.registers.stack[0], 0x0200);
+    }
+    #[test]
+    fn test_call_2nnn_full() {
+        let mut cpu = Cpu::new(vec![0x21, 0x23], 0x0200);
+        cpu.registers.sp = 0xF;
+        cpu.tick();
+        assert_eq!(cpu.registers.pc, 0x123);
+        assert_eq!(cpu.registers.sp, 0);
+        assert_eq!(cpu.registers.stack[0xF], 0x0200);
     }
 
     #[test]
