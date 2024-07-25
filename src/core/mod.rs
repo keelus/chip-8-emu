@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod beep;
 pub mod cpu;
 pub mod instruction;
