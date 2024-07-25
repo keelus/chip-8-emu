@@ -8,6 +8,7 @@
 // https://github.com/keelus/chip-8-emu
 
 mod core;
+use core::memory::{HEX_SPRITES_HEIGHT, HEX_SPRITES_START_MEM, HEX_SPRITES_WIDTH};
 use core::{cpu::Cpu, screen};
 use std::borrow::BorrowMut;
 
@@ -48,23 +49,37 @@ fn main() {
 
     let mut buffer = [0 as u8; (screen::WIDTH * screen::HEIGHT * 3) as usize];
 
-    let mut cpu = Cpu::new(vec![0x80, 0x32], PROGRAM_BEGIN);
+    let mut cpu = Cpu::new(
+        vec![0xF0, 0x29, 0xD0, 0x15, 0xF1, 0x29, 0xD2, 0x35],
+        PROGRAM_BEGIN,
+    );
+    cpu.registers.v[0] = 0;
+    cpu.registers.v[1] = 0;
+    cpu.registers.v[2] = 5;
+    cpu.registers.v[3] = 0;
+    cpu.tick();
+    cpu.tick();
+    println!("=====");
+    cpu.tick();
+    cpu.tick();
 
-    // Example pixel top left
-    let pix = cpu.screen.0[0].borrow_mut();
-    *pix |= 0x1 << 63;
+    println!("Collision (VF): {}", cpu.registers.v[0xf]);
 
-    // Example pixel top right
-    let pix = cpu.screen.0[0].borrow_mut();
-    *pix |= 1;
+    // // Example pixel top left
+    // let pix = cpu.screen.0[0].borrow_mut();
+    // *pix |= 0x1 << 63;
 
-    // Example pixel bottom left
-    let pix = cpu.screen.0[screen::HEIGHT - 1].borrow_mut();
-    *pix |= 0x1 << 63;
+    // // Example pixel top right
+    // let pix = cpu.screen.0[0].borrow_mut();
+    // *pix |= 1;
 
-    // Example pixel bottom right
-    let pix = cpu.screen.0[screen::HEIGHT - 1].borrow_mut();
-    *pix |= 1;
+    // // Example pixel bottom left
+    // let pix = cpu.screen.0[screen::HEIGHT - 1].borrow_mut();
+    // *pix |= 0x1 << 63;
+
+    // // Example pixel bottom right
+    // let pix = cpu.screen.0[screen::HEIGHT - 1].borrow_mut();
+    // *pix |= 1;
 
     'running: loop {
         for event in event_pump.poll_iter() {

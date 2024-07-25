@@ -11,9 +11,11 @@ use std::ops::Shr;
 
 use rand::Rng;
 
+use crate::core::{memory::HEX_SPRITES_WIDTH, screen};
+
 use super::{
     keypad::Keypad,
-    memory::{Memory, HEX_SPRITES_START_MEM},
+    memory::{Memory, HEX_SPRITES_HEIGHT, HEX_SPRITES_START_MEM},
     registers::Registers,
     screen::Screen,
 };
@@ -227,7 +229,33 @@ impl Cpu {
                 let rnd = rnd & kk;
                 self.registers.v[x as usize] = rnd;
             }
-            (0xD, _, _, _) => panic!("DRW not implemented."),
+            (0xD, _, _, _) => {
+                // DRW - dxyn
+                let i = self.registers.i;
+                let x = instruction.x();
+                let y = instruction.y();
+                let vx = self.registers.v[x as usize];
+                let vy = self.registers.v[y as usize];
+                let n = instruction.n() as u16;
+
+                let mut x = vx;
+                let mut y = vy;
+
+                for idx in 0..n {
+                    let addr = HEX_SPRITES_START_MEM + i + idx;
+                    let data = (self.memory.read(addr) as u64) << 56;
+                    let collision = (self.screen.0[y as usize] & data.rotate_right(x as u32)) != 0;
+                    //println!("Collision: {:#066x} ({})", collision, collision);
+                    self.screen.0[y as usize] ^= data.rotate_right(x as u32);
+
+                    self.registers.v[0xF] = if collision { 1 } else { 0 };
+
+                    y += 1;
+                    if y >= screen::HEIGHT as u8 {
+                        y = 0;
+                    }
+                }
+            }
             (0xE, _, 9, 0xE) => {
                 // SKP - ex9e
                 let x = instruction.x();
@@ -273,7 +301,7 @@ impl Cpu {
             (0xF, _, 2, 9) => {
                 // LD - fx29
                 let x = instruction.x() as u16;
-                let addr = HEX_SPRITES_START_MEM.wrapping_add(x);
+                let addr = HEX_SPRITES_START_MEM.wrapping_add(x * HEX_SPRITES_HEIGHT as u16);
                 self.registers.i = addr;
             }
             (0xF, _, 3, 3) => {
