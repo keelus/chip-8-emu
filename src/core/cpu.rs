@@ -7,12 +7,11 @@
 //
 // https://github.com/keelus/chip-8-emu
 
-use std::{borrow::BorrowMut, ops::Shr, process::Output, time::Duration};
+use std::{borrow::BorrowMut, ops::Shr, time::Duration};
 
 use rand::Rng;
-use sdl2::{audio, libc::open};
 
-use crate::core::{memory::HEX_SPRITES_WIDTH, screen};
+use crate::core::screen;
 
 use super::{
     beep::BeepHandler,
@@ -29,7 +28,14 @@ use super::{
 const SHIFTS_AGAINST_VY: bool = true;
 
 // Define whether instructions fx55 and fx65 increment I or not.
-const MEMORY_LOAD_SAVE_INCREMENT_I: bool = false;
+const MEMORY_LOAD_SAVE_INCREMENT_I: bool = true;
+
+// If clipping is disabled, sprites will wrap around.
+const CLIPPING: bool = true;
+
+// 0 -> NNN (JP to NNN + V0)
+// 1 -> xNN (JP to NN + Vx) // Use with care!
+const JP_BEHAVIOUR: u8 = 0;
 
 pub struct Cpu {
     pub registers: Registers,
@@ -266,9 +272,19 @@ impl Cpu {
             }
             (0xB, _, _, _) => {
                 // JP - bnnn
-                let nnn = instruction.nnn();
-                let v0 = self.registers.v[0] as u16;
-                let pc = nnn.wrapping_add(v0);
+
+                let pc: u16;
+
+                if JP_BEHAVIOUR == 0 {
+                    let nnn = instruction.nnn();
+                    let v0 = self.registers.v[0] as u16;
+                    pc = nnn.wrapping_add(v0);
+                } else {
+                    let kk = instruction.kk() as u16;
+                    let x = instruction.x();
+                    let vx = self.registers.v[x as usize] as u16;
+                    pc = kk.wrapping_add(vx);
+                }
                 self.registers.pc = pc.wrapping_sub(2);
             }
             (0xC, _, _, _) => {
@@ -291,20 +307,31 @@ impl Cpu {
                 let x = vx % screen::WIDTH as u8;
                 let mut y = vy % screen::HEIGHT as u8;
 
+                let mut collision = false;
                 for idx in 0..n {
                     let addr = HEX_SPRITES_START_MEM + i + idx;
-                    let data = (self.memory.read(addr) as u64) << 56;
-                    let collision = (self.screen.0[y as usize] & data.rotate_right(x as u32)) != 0;
-                    //println!("Collision: {:#066x} ({})", collision, collision);
-                    self.screen.0[y as usize] ^= data.rotate_right(x as u32);
+                    let mut data = (self.memory.read(addr) as u64) << 56;
 
-                    self.registers.v[0xF] = if collision { 1 } else { 0 };
+                    if CLIPPING {
+                        data = data.shr(x as u32);
+                    } else {
+                        data = data.rotate_right(x as u32);
+                    }
+
+                    collision |= (self.screen.0[y as usize] & data) != 0;
+                    self.screen.0[y as usize] ^= data;
 
                     y += 1;
                     if y >= screen::HEIGHT as u8 {
-                        y = 0;
+                        if CLIPPING {
+                            break;
+                        } else {
+                            y = 0;
+                        }
                     }
                 }
+
+                self.registers.v[0xF] = if collision { 1 } else { 0 };
 
                 std::thread::sleep(Duration::from_secs_f64(1.0 / 60.0));
             }
