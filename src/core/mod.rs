@@ -1,3 +1,4 @@
+pub mod beep;
 pub mod cpu;
 pub mod instruction;
 pub mod keypad;

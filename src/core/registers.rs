@@ -29,7 +29,7 @@ impl Timer {
         self.last_write = Instant::now()
     }
 
-    pub fn read(&mut self) -> u8 {
+    pub fn read(&self) -> u8 {
         let now = Instant::now();
         let diff = now.duration_since(self.last_write);
 
@@ -47,7 +47,6 @@ pub const SOUND_TIMER: usize = 1;
 pub struct Registers {
     pub v: [u8; 16], // General purpose
     pub i: u16,      // Memory address oriented [12bit]
-    //pub timers: [u8; 2],
     pub timers: [Timer; 2],
     pub pc: u16,
     pub sp: u8,

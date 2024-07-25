@@ -7,7 +7,7 @@
 //
 // https://github.com/keelus/chip-8-emu
 
-// Must be a 64 x 32 screen, as for rows we are using u64(width) words.
+// Must be a 64 x 32 screen, as each row is an u64.
 pub const WIDTH: usize = 64;
 pub const HEIGHT: usize = 32;
 

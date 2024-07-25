@@ -7,14 +7,15 @@
 //
 // https://github.com/keelus/chip-8-emu
 
-use std::{ops::Shr, time::Duration};
+use std::{borrow::BorrowMut, ops::Shr, process::Output, time::Duration};
 
 use rand::Rng;
-use sdl2::libc::open;
+use sdl2::{audio, libc::open};
 
 use crate::core::{memory::HEX_SPRITES_WIDTH, screen};
 
 use super::{
+    beep::BeepHandler,
     keypad::Keypad,
     memory::{Memory, HEX_SPRITES_HEIGHT, HEX_SPRITES_START_MEM},
     registers::{Registers, DELAY_TIMER, SOUND_TIMER},
@@ -35,6 +36,8 @@ pub struct Cpu {
     pub memory: Memory,
     pub screen: Screen,
     pub keypad: Keypad,
+
+    pub beep_handler: Option<Box<dyn BeepHandler>>,
 }
 
 impl Cpu {
@@ -44,7 +47,17 @@ impl Cpu {
             memory: Memory::new(program, program_begin),
             screen: Screen::new(),
             keypad: Keypad::new(),
+
+            beep_handler: None,
         }
+    }
+
+    pub fn add_beep_handler(&mut self, audio_manager: Box<dyn BeepHandler>) {
+        self.beep_handler = Some(audio_manager);
+    }
+
+    pub fn remove_beep_handler(&mut self) {
+        self.beep_handler = None
     }
 
     pub fn tick(&mut self) {
@@ -181,9 +194,9 @@ impl Cpu {
                 let y = instruction.y();
                 let vx = self.registers.v[x as usize];
                 let vy = self.registers.v[y as usize];
-                let (vx, overflows) = vx.overflowing_sub(vy);
+                let (vx, underflows) = vx.overflowing_sub(vy);
                 self.registers.v[x as usize] = vx;
-                self.registers.v[0x0F] = if overflows { 0 } else { 1 };
+                self.registers.v[0x0F] = if underflows { 0 } else { 1 };
             }
             (8, _, _, 6) => {
                 // SHR - 8xy6
@@ -211,9 +224,9 @@ impl Cpu {
                 let y = instruction.y();
                 let vx = self.registers.v[x as usize];
                 let vy = self.registers.v[y as usize];
-                let (vx, overflows) = vy.overflowing_sub(vx);
+                let (vx, underflows) = vy.overflowing_sub(vx);
                 self.registers.v[x as usize] = vx;
-                self.registers.v[0x0F] = if overflows { 0 } else { 1 };
+                self.registers.v[0x0F] = if underflows { 0 } else { 1 };
             }
             (8, _, _, 0xE) => {
                 // SHL - 8xye
@@ -403,15 +416,39 @@ impl Cpu {
             _ => panic!("Unknown instruction."),
         }
 
-        self.registers.pc += 2
+        self.registers.pc += 2;
+        self.handle_beep();
+    }
+
+    pub fn handle_beep(&mut self) {
+        if let Some(beep_handler) = self.beep_handler.borrow_mut() {
+            if self.registers.timers[SOUND_TIMER].read() > 0 {
+                beep_handler.start()
+            } else {
+                beep_handler.stop()
+            }
+        }
     }
 }
 
 #[cfg(test)]
 mod instruction_tests {
-    use crate::core::cpu::Cpu;
+    use std::u64;
 
-    // CLS
+    use rand::Rng;
+
+    use crate::core::cpu::{Cpu, SHIFTS_AGAINST_VY};
+
+    #[test]
+    fn test_cls_00e0() {
+        let mut cpu = Cpu::new(vec![0x00, 0xE0], 0x0200);
+        cpu.screen
+            .0
+            .iter_mut()
+            .for_each(|row| *row = rand::thread_rng().gen_range(0..=u64::MAX));
+        cpu.tick();
+        assert!(cpu.screen.0.iter().all(|row| *row == 0));
+    }
     // SYS
 
     #[test]
@@ -583,31 +620,34 @@ mod instruction_tests {
     }
 
     #[test]
-    fn test_sub_8xy5_no_carry() {
+    fn test_sub_8xy5_no_borrow() {
         let mut cpu = Cpu::new(vec![0x80, 0x15], 0x0200);
         cpu.registers.v[0x0] = 0xF3;
         cpu.registers.v[0x1] = 0x20;
         cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0xD3);
         assert_eq!(cpu.registers.v[0x1], 0x20);
-        assert_eq!(cpu.registers.v[0xF], 0x0);
+        assert_eq!(cpu.registers.v[0xF], 0x1);
     }
-
     #[test]
-    fn test_sub_8xy5_carry() {
+    fn test_sub_8xy5_borrow() {
         let mut cpu = Cpu::new(vec![0x80, 0x15], 0x0200);
         cpu.registers.v[0x0] = 0x25;
         cpu.registers.v[0x1] = 0x80;
         cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0xA5); // Wraps
         assert_eq!(cpu.registers.v[0x1], 0x80);
-        assert_eq!(cpu.registers.v[0xF], 0x1);
+        assert_eq!(cpu.registers.v[0xF], 0x0);
     }
 
     #[test]
     fn test_shr_8xy6_no_carry() {
         let mut cpu = Cpu::new(vec![0x80, 0x16], 0x0200);
-        cpu.registers.v[0x0] = 0b01111110;
+        if SHIFTS_AGAINST_VY {
+            cpu.registers.v[0x1] = 0b01111110;
+        } else {
+            cpu.registers.v[0x0] = 0b01111110;
+        }
         cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0b00111111);
         assert_eq!(cpu.registers.v[0xF], 0x0);
@@ -616,37 +656,45 @@ mod instruction_tests {
     #[test]
     fn test_shr_8xy6_carry() {
         let mut cpu = Cpu::new(vec![0x80, 0x16], 0x0200);
-        cpu.registers.v[0x0] = 0b00111111;
+        if SHIFTS_AGAINST_VY {
+            cpu.registers.v[0x1] = 0b00111111;
+        } else {
+            cpu.registers.v[0x0] = 0b00111111;
+        }
         cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0b00011111);
         assert_eq!(cpu.registers.v[0xF], 0x1);
     }
 
     #[test]
-    fn test_subn_8xy7_no_carry() {
+    fn test_subn_8xy7_no_borrow() {
         let mut cpu = Cpu::new(vec![0x80, 0x17], 0x0200);
         cpu.registers.v[0x0] = 0x25;
         cpu.registers.v[0x1] = 0x80;
         cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0x5B);
         assert_eq!(cpu.registers.v[0x1], 0x80);
-        assert_eq!(cpu.registers.v[0xF], 0x0);
+        assert_eq!(cpu.registers.v[0xF], 0x1);
     }
     #[test]
-    fn test_subn_8xy7_carry() {
+    fn test_subn_8xy7_borrow() {
         let mut cpu = Cpu::new(vec![0x80, 0x17], 0x0200);
         cpu.registers.v[0x0] = 0xF3;
         cpu.registers.v[0x1] = 0x20;
         cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0x2D); // Wraps
         assert_eq!(cpu.registers.v[0x1], 0x20);
-        assert_eq!(cpu.registers.v[0xF], 0x1);
+        assert_eq!(cpu.registers.v[0xF], 0x0);
     }
 
     #[test]
     fn test_shl_8xye_no_carry() {
         let mut cpu = Cpu::new(vec![0x80, 0x1E], 0x0200);
-        cpu.registers.v[0x0] = 0b01111110;
+        if SHIFTS_AGAINST_VY {
+            cpu.registers.v[0x1] = 0b01111110;
+        } else {
+            cpu.registers.v[0x0] = 0b01111110;
+        }
         cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0b11111100);
         assert_eq!(cpu.registers.v[0xF], 0x0);
@@ -654,7 +702,11 @@ mod instruction_tests {
     #[test]
     fn test_shl_8xye_carry() {
         let mut cpu = Cpu::new(vec![0x80, 0x1E], 0x0200);
-        cpu.registers.v[0x0] = 0b11111100;
+        if SHIFTS_AGAINST_VY {
+            cpu.registers.v[0x1] = 0b11111100;
+        } else {
+            cpu.registers.v[0x0] = 0b11111100;
+        }
         cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0b11111000);
         assert_eq!(cpu.registers.v[0xF], 0x1);
