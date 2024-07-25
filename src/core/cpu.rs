@@ -7,7 +7,7 @@
 //
 // https://github.com/keelus/chip-8-emu
 
-use std::ops::Shr;
+use std::{ops::Shr, time::Duration};
 
 use rand::Rng;
 use sdl2::libc::open;
@@ -136,6 +136,7 @@ impl Cpu {
                 let vx = self.registers.v[x as usize];
                 let vy = self.registers.v[y as usize];
                 self.registers.v[x as usize] = vx | vy;
+                self.registers.v[0xF as usize] = 0;
             }
             (8, _, _, 2) => {
                 // AND - 8xy2
@@ -144,6 +145,7 @@ impl Cpu {
                 let vx = self.registers.v[x as usize];
                 let vy = self.registers.v[y as usize];
                 self.registers.v[x as usize] = vx & vy;
+                self.registers.v[0xF as usize] = 0;
             }
             (8, _, _, 3) => {
                 // XOR - 8xy3
@@ -152,6 +154,7 @@ impl Cpu {
                 let vx = self.registers.v[x as usize];
                 let vy = self.registers.v[y as usize];
                 self.registers.v[x as usize] = vx ^ vy;
+                self.registers.v[0xF as usize] = 0;
             }
             (8, _, _, 4) => {
                 // ADD - 8xy4
@@ -258,6 +261,8 @@ impl Cpu {
                         y = 0;
                     }
                 }
+
+                std::thread::sleep(Duration::from_secs_f64(1.0 / 60.0));
             }
             (0xE, _, 9, 0xE) => {
                 // SKP - ex9e
@@ -345,6 +350,9 @@ impl Cpu {
                     self.memory.write(addr, v);
                     addr += 1;
                 }
+
+                // Update I. TODO: Make configurable
+                self.registers.i = addr;
             }
             (0xF, _, 6, 5) => {
                 // LD [x inclusive. TODO: Check if I is updated] - fx65
@@ -355,6 +363,9 @@ impl Cpu {
                     self.registers.v[idx as usize] = v;
                     addr += 1;
                 }
+
+                // Update I. TODO: Make configurable
+                self.registers.i = addr;
             }
             _ => panic!("Unknown instruction."),
         }

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 //
 pub struct Keypad {
     key_map: HashMap<u8, bool>, // Down = true, Up = false
-    last_key: Option<u8>,
+    pub last_key: Option<u8>,
 }
 
 impl Keypad {
@@ -31,10 +31,11 @@ impl Keypad {
     }
 
     pub fn get_key_state(&mut self, idx: u8) -> bool {
-        *self.key_map.get(&idx).unwrap()
+        let state = *self.key_map.get(&idx).unwrap();
+        self.last_key = None;
+        state
     }
 
-    // Note: get_released_key() consumes the last_key (if any)
     pub fn get_released_key(&mut self) -> Option<u8> {
         let last_key = self.last_key;
         self.last_key = None;
