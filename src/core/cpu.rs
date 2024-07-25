@@ -21,6 +21,15 @@ use super::{
     screen::Screen,
 };
 
+// If true, shift operations will shift Vy's value, storing
+// the result in Vx.
+// If false, shift operations will shift Vx's value, storing
+// the result in Vx.
+const SHIFTS_AGAINST_VY: bool = true;
+
+// Define whether instructions fx55 and fx65 increment I or not.
+const MEMORY_LOAD_SAVE_INCREMENT_I: bool = false;
+
 pub struct Cpu {
     pub registers: Registers,
     pub memory: Memory,
@@ -179,9 +188,20 @@ impl Cpu {
             (8, _, _, 6) => {
                 // SHR - 8xy6
                 let x = instruction.x();
-                let vx = self.registers.v[x as usize];
-                let vf = if vx & 0x1 != 0 { 1 } else { 0 };
-                let vx = vx >> 1;
+
+                let value;
+                let mut vx = self.registers.v[x as usize];
+
+                if SHIFTS_AGAINST_VY {
+                    let y = instruction.y();
+                    let vy = self.registers.v[y as usize];
+                    value = vy;
+                } else {
+                    value = vx;
+                }
+
+                let vf = if value & 0x1 != 0 { 1 } else { 0 };
+                vx = value >> 1;
                 self.registers.v[x as usize] = vx;
                 self.registers.v[0x0F] = vf;
             }
@@ -198,9 +218,20 @@ impl Cpu {
             (8, _, _, 0xE) => {
                 // SHL - 8xye
                 let x = instruction.x();
-                let vx = self.registers.v[x as usize];
-                let vf = if vx & 0x80 != 0 { 1 } else { 0 };
-                let vx = vx << 1;
+
+                let value;
+                let mut vx = self.registers.v[x as usize];
+
+                if SHIFTS_AGAINST_VY {
+                    let y = instruction.y();
+                    let vy = self.registers.v[y as usize];
+                    value = vy;
+                } else {
+                    value = vx;
+                }
+
+                let vf = if value & 0x80 != 0 { 1 } else { 0 };
+                vx = value << 1;
                 self.registers.v[x as usize] = vx;
                 self.registers.v[0x0F] = vf;
             }
@@ -342,7 +373,7 @@ impl Cpu {
                 self.memory.write(i + 2, ones);
             }
             (0xF, _, 5, 5) => {
-                // LD [x inclusive. TODO: Check if I is updated] - fx55
+                // LD [x inclusive] - fx55
                 let x = instruction.x();
                 let mut addr = self.registers.i;
                 for idx in 0..=x {
@@ -351,11 +382,12 @@ impl Cpu {
                     addr += 1;
                 }
 
-                // Update I. TODO: Make configurable
-                self.registers.i = addr;
+                if MEMORY_LOAD_SAVE_INCREMENT_I {
+                    self.registers.i = addr;
+                }
             }
             (0xF, _, 6, 5) => {
-                // LD [x inclusive. TODO: Check if I is updated] - fx65
+                // LD [x inclusive] - fx65
                 let x = instruction.x();
                 let mut addr = self.registers.i;
                 for idx in 0..=x {
@@ -364,8 +396,9 @@ impl Cpu {
                     addr += 1;
                 }
 
-                // Update I. TODO: Make configurable
-                self.registers.i = addr;
+                if MEMORY_LOAD_SAVE_INCREMENT_I {
+                    self.registers.i = addr;
+                }
             }
             _ => panic!("Unknown instruction."),
         }
