@@ -10,13 +10,14 @@
 use std::ops::Shr;
 
 use rand::Rng;
+use sdl2::libc::open;
 
 use crate::core::{memory::HEX_SPRITES_WIDTH, screen};
 
 use super::{
     keypad::Keypad,
     memory::{Memory, HEX_SPRITES_HEIGHT, HEX_SPRITES_START_MEM},
-    registers::Registers,
+    registers::{Registers, DELAY_TIMER, SOUND_TIMER},
     screen::Screen,
 };
 
@@ -170,15 +171,16 @@ impl Cpu {
                 let vy = self.registers.v[y as usize];
                 let (vx, overflows) = vx.overflowing_sub(vy);
                 self.registers.v[x as usize] = vx;
-                self.registers.v[0x0F] = if overflows { 1 } else { 0 };
+                self.registers.v[0x0F] = if overflows { 0 } else { 1 };
             }
             (8, _, _, 6) => {
                 // SHR - 8xy6
                 let x = instruction.x();
                 let vx = self.registers.v[x as usize];
-                self.registers.v[0x0F] = if vx & 0x1 != 0 { 1 } else { 0 };
+                let vf = if vx & 0x1 != 0 { 1 } else { 0 };
                 let vx = vx >> 1;
                 self.registers.v[x as usize] = vx;
+                self.registers.v[0x0F] = vf;
             }
             (8, _, _, 7) => {
                 // SUBN - 8xy7
@@ -188,15 +190,16 @@ impl Cpu {
                 let vy = self.registers.v[y as usize];
                 let (vx, overflows) = vy.overflowing_sub(vx);
                 self.registers.v[x as usize] = vx;
-                self.registers.v[0x0F] = if overflows { 1 } else { 0 };
+                self.registers.v[0x0F] = if overflows { 0 } else { 1 };
             }
             (8, _, _, 0xE) => {
                 // SHL - 8xye
                 let x = instruction.x();
                 let vx = self.registers.v[x as usize];
-                self.registers.v[0x0F] = if vx & 0x80 != 0 { 1 } else { 0 };
+                let vf = if vx & 0x80 != 0 { 1 } else { 0 };
                 let vx = vx << 1;
                 self.registers.v[x as usize] = vx;
+                self.registers.v[0x0F] = vf;
             }
             (9, _, _, 0) => {
                 // SNE - 9xy0
@@ -238,8 +241,8 @@ impl Cpu {
                 let vy = self.registers.v[y as usize];
                 let n = instruction.n() as u16;
 
-                let mut x = vx;
-                let mut y = vy;
+                let x = vx % screen::WIDTH as u8;
+                let mut y = vy % screen::HEIGHT as u8;
 
                 for idx in 0..n {
                     let addr = HEX_SPRITES_START_MEM + i + idx;
@@ -276,7 +279,12 @@ impl Cpu {
                     self.registers.pc += 2;
                 }
             }
-            (0xF, _, 0, 7) => panic!("LD not implemented."),
+            (0xF, _, 0, 7) => {
+                let x = instruction.x();
+
+                let timer_value = self.registers.timers[DELAY_TIMER].read();
+                self.registers.v[x as usize] = timer_value;
+            }
             (0xF, _, 0, 0xA) => {
                 // LD - fx0a
                 let key = self.keypad.get_released_key();
@@ -288,8 +296,18 @@ impl Cpu {
                     self.registers.pc -= 2;
                 }
             }
-            (0xF, _, 1, 5) => panic!("LD not implemented."),
-            (0xF, _, 1, 8) => panic!("LD not implemented."),
+            (0xF, _, 1, 5) => {
+                let x = instruction.x();
+                let vx = self.registers.v[x as usize];
+
+                self.registers.timers[DELAY_TIMER].write(vx);
+            }
+            (0xF, _, 1, 8) => {
+                let x = instruction.x();
+                let vx = self.registers.v[x as usize];
+
+                self.registers.timers[SOUND_TIMER].write(vx);
+            }
             (0xF, _, 1, 0xE) => {
                 // ADD (no carry) - fx1e
                 let x = instruction.x();
