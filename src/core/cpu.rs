@@ -9,6 +9,7 @@
 
 use std::{borrow::BorrowMut, ops::Shr, time::Instant};
 
+use imgui_glow_renderer::glow::PROGRAM_BINARY_LENGTH;
 use rand::Rng;
 
 use crate::core::screen;
@@ -49,21 +50,42 @@ pub struct Cpu {
 
     pub beep_handler: Option<Box<dyn BeepHandler>>,
 
+    pub rom_loaded: bool,
     last_draw: Option<Instant>,
+    pub halted: bool,
 }
 
 impl Cpu {
-    pub fn new(program: Vec<u8>, program_begin: u16) -> Cpu {
+    pub fn new() -> Cpu {
         Cpu {
-            registers: Registers::new(program_begin),
-            memory: Memory::new(program, program_begin),
+            registers: Registers::new(),
+            memory: Memory::new(),
             screen: Screen::new(),
             keypad: Keypad::new(),
 
             beep_handler: None,
 
+            rom_loaded: false,
             last_draw: None,
+            halted: false,
         }
+    }
+
+    pub fn load_rom(&mut self, program: Vec<u8>, program_begin: u16) {
+        self.memory.load_rom(program, program_begin);
+        self.registers.pc = program_begin;
+        self.rom_loaded = true;
+    }
+
+    pub fn clear(&mut self) {
+        self.registers = Registers::new();
+        self.memory = Memory::new();
+        self.screen = Screen::new();
+        self.keypad = Keypad::new();
+        self.rom_loaded = false;
+        self.last_draw = None;
+        self.halted = false;
+        self.handle_beep();
     }
 
     pub fn add_beep_handler(&mut self, audio_manager: Box<dyn BeepHandler>) {
@@ -75,8 +97,10 @@ impl Cpu {
     }
 
     pub fn tick(&mut self, ticks: u16) {
-        for _i in 0..ticks {
-            self.do_tick();
+        if !self.halted && self.rom_loaded {
+            for _i in 0..ticks {
+                self.do_tick();
+            }
         }
     }
 
@@ -490,7 +514,8 @@ mod instruction_tests {
 
     #[test]
     fn test_cls_00e0() {
-        let mut cpu = Cpu::new(vec![0x00, 0xE0], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x00, 0xE0], 0x0200);
         cpu.screen
             .0
             .iter_mut()
@@ -502,7 +527,8 @@ mod instruction_tests {
 
     #[test]
     fn test_ret_00ee() {
-        let mut cpu = Cpu::new(vec![0x00, 0xEE], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x00, 0xEE], 0x0200);
         cpu.registers.sp = 0;
         cpu.registers.stack[0xF] = 0x0300;
         cpu.tick(1);
@@ -511,7 +537,8 @@ mod instruction_tests {
     }
     #[test]
     fn test_ret_00ee_full() {
-        let mut cpu = Cpu::new(vec![0x00, 0xEE], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x00, 0xEE], 0x0200);
         cpu.registers.sp = 0x1;
         cpu.registers.stack[0x0] = 0x0300;
         cpu.tick(1);
@@ -521,14 +548,16 @@ mod instruction_tests {
 
     #[test]
     fn test_jp_1nnn() {
-        let mut cpu = Cpu::new(vec![0x11, 0x23], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x11, 0x23], 0x0200);
         cpu.tick(1);
         assert_eq!(cpu.registers.pc, 0x123);
     }
 
     #[test]
     fn test_call_2nnn() {
-        let mut cpu = Cpu::new(vec![0x21, 0x23], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x21, 0x23], 0x0200);
         cpu.tick(1);
         assert_eq!(cpu.registers.pc, 0x123);
         assert_eq!(cpu.registers.sp, 1);
@@ -536,7 +565,8 @@ mod instruction_tests {
     }
     #[test]
     fn test_call_2nnn_full() {
-        let mut cpu = Cpu::new(vec![0x21, 0x23], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x21, 0x23], 0x0200);
         cpu.registers.sp = 0xF;
         cpu.tick(1);
         assert_eq!(cpu.registers.pc, 0x123);
@@ -546,14 +576,16 @@ mod instruction_tests {
 
     #[test]
     fn test_se_3xkk_no_skip() {
-        let mut cpu = Cpu::new(vec![0x30, 0x55], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x30, 0x55], 0x0200);
         cpu.registers.v[0x0] = 0x15;
         cpu.tick(1);
         assert_eq!(cpu.registers.pc, 0x0202);
     }
     #[test]
     fn test_se_3xkk_skip() {
-        let mut cpu = Cpu::new(vec![0x30, 0x55], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x30, 0x55], 0x0200);
         cpu.registers.v[0x0] = 0x55;
         cpu.tick(1);
         assert_eq!(cpu.registers.pc, 0x0204);
@@ -561,14 +593,16 @@ mod instruction_tests {
 
     #[test]
     fn test_sne_3xkk_no_skip() {
-        let mut cpu = Cpu::new(vec![0x40, 0x55], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x40, 0x55], 0x0200);
         cpu.registers.v[0x0] = 0x55;
         cpu.tick(1);
         assert_eq!(cpu.registers.pc, 0x0202);
     }
     #[test]
     fn test_sne_4xkk_skip() {
-        let mut cpu = Cpu::new(vec![0x40, 0x55], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x40, 0x55], 0x0200);
         cpu.registers.v[0x0] = 0x15;
         cpu.tick(1);
         assert_eq!(cpu.registers.pc, 0x0204);
@@ -576,7 +610,8 @@ mod instruction_tests {
 
     #[test]
     fn test_se_5xy0_no_skip() {
-        let mut cpu = Cpu::new(vec![0x50, 0x10], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x50, 0x10], 0x0200);
         cpu.registers.v[0x0] = 0x28;
         cpu.registers.v[0x1] = 0x55;
         cpu.tick(1);
@@ -584,7 +619,8 @@ mod instruction_tests {
     }
     #[test]
     fn test_se_5xy0_skip() {
-        let mut cpu = Cpu::new(vec![0x50, 0x10], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x50, 0x10], 0x0200);
         cpu.registers.v[0x0] = 0x15;
         cpu.registers.v[0x1] = 0x15;
         cpu.tick(1);
@@ -593,14 +629,16 @@ mod instruction_tests {
 
     #[test]
     fn test_ld_6xkk() {
-        let mut cpu = Cpu::new(vec![0x60, 0x12], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x60, 0x12], 0x0200);
         cpu.tick(1);
         assert_eq!(cpu.registers.v[0x0], 0x12);
     }
 
     #[test]
     fn test_add_7xkk() {
-        let mut cpu = Cpu::new(vec![0x70, 0x12], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x70, 0x12], 0x0200);
         cpu.registers.v[0x0] = 0x33;
         cpu.tick(1);
         assert_eq!(cpu.registers.v[0x0], 0x45);
@@ -609,7 +647,8 @@ mod instruction_tests {
 
     #[test]
     fn test_ld_8xy0() {
-        let mut cpu = Cpu::new(vec![0x80, 0x10], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x10], 0x0200);
         cpu.registers.v[0x0] = 0x12;
         cpu.registers.v[0x1] = 0x34;
         cpu.tick(1);
@@ -619,7 +658,8 @@ mod instruction_tests {
 
     #[test]
     fn test_or_8xy1() {
-        let mut cpu = Cpu::new(vec![0x80, 0x11], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x11], 0x0200);
         cpu.registers.v[0x0] = 0b10101010;
         cpu.registers.v[0x1] = 0b01010101;
         cpu.tick(1);
@@ -629,7 +669,8 @@ mod instruction_tests {
 
     #[test]
     fn test_and_8xy2() {
-        let mut cpu = Cpu::new(vec![0x80, 0x12], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x12], 0x0200);
         cpu.registers.v[0x0] = 0b10101010;
         cpu.registers.v[0x1] = 0b01010101;
         cpu.tick(1);
@@ -639,7 +680,8 @@ mod instruction_tests {
 
     #[test]
     fn test_xor_8xy3() {
-        let mut cpu = Cpu::new(vec![0x80, 0x13], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x13], 0x0200);
         cpu.registers.v[0x0] = 0b10101111;
         cpu.registers.v[0x1] = 0b01011111;
         cpu.tick(1);
@@ -649,7 +691,8 @@ mod instruction_tests {
 
     #[test]
     fn test_add_8xy4_no_carry() {
-        let mut cpu = Cpu::new(vec![0x80, 0x14], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x14], 0x0200);
         cpu.registers.v[0x0] = 0x22;
         cpu.registers.v[0x1] = 0x41;
         cpu.tick(1);
@@ -659,7 +702,8 @@ mod instruction_tests {
     }
     #[test]
     fn test_add_8xy4_carry() {
-        let mut cpu = Cpu::new(vec![0x80, 0x14], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x14], 0x0200);
         cpu.registers.v[0x0] = 0xF3;
         cpu.registers.v[0x1] = 0x41;
         cpu.tick(1);
@@ -670,7 +714,8 @@ mod instruction_tests {
 
     #[test]
     fn test_sub_8xy5_no_borrow() {
-        let mut cpu = Cpu::new(vec![0x80, 0x15], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x15], 0x0200);
         cpu.registers.v[0x0] = 0xF3;
         cpu.registers.v[0x1] = 0x20;
         cpu.tick(1);
@@ -680,7 +725,8 @@ mod instruction_tests {
     }
     #[test]
     fn test_sub_8xy5_borrow() {
-        let mut cpu = Cpu::new(vec![0x80, 0x15], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x15], 0x0200);
         cpu.registers.v[0x0] = 0x25;
         cpu.registers.v[0x1] = 0x80;
         cpu.tick(1);
@@ -691,7 +737,8 @@ mod instruction_tests {
 
     #[test]
     fn test_shr_8xy6_no_carry() {
-        let mut cpu = Cpu::new(vec![0x80, 0x16], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x16], 0x0200);
         if SHIFTS_AGAINST_VY {
             cpu.registers.v[0x1] = 0b01111110;
         } else {
@@ -704,7 +751,8 @@ mod instruction_tests {
 
     #[test]
     fn test_shr_8xy6_carry() {
-        let mut cpu = Cpu::new(vec![0x80, 0x16], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x16], 0x0200);
         if SHIFTS_AGAINST_VY {
             cpu.registers.v[0x1] = 0b00111111;
         } else {
@@ -717,7 +765,8 @@ mod instruction_tests {
 
     #[test]
     fn test_subn_8xy7_no_borrow() {
-        let mut cpu = Cpu::new(vec![0x80, 0x17], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x17], 0x0200);
         cpu.registers.v[0x0] = 0x25;
         cpu.registers.v[0x1] = 0x80;
         cpu.tick(1);
@@ -727,7 +776,8 @@ mod instruction_tests {
     }
     #[test]
     fn test_subn_8xy7_borrow() {
-        let mut cpu = Cpu::new(vec![0x80, 0x17], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x17], 0x0200);
         cpu.registers.v[0x0] = 0xF3;
         cpu.registers.v[0x1] = 0x20;
         cpu.tick(1);
@@ -738,7 +788,8 @@ mod instruction_tests {
 
     #[test]
     fn test_shl_8xye_no_carry() {
-        let mut cpu = Cpu::new(vec![0x80, 0x1E], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x1E], 0x0200);
         if SHIFTS_AGAINST_VY {
             cpu.registers.v[0x1] = 0b01111110;
         } else {
@@ -750,7 +801,8 @@ mod instruction_tests {
     }
     #[test]
     fn test_shl_8xye_carry() {
-        let mut cpu = Cpu::new(vec![0x80, 0x1E], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x80, 0x1E], 0x0200);
         if SHIFTS_AGAINST_VY {
             cpu.registers.v[0x1] = 0b11111100;
         } else {
@@ -763,7 +815,8 @@ mod instruction_tests {
 
     #[test]
     fn test_sne_9xy0_no_skip() {
-        let mut cpu = Cpu::new(vec![0x90, 0x10], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x90, 0x10], 0x0200);
         cpu.registers.v[0x0] = 0x12;
         cpu.registers.v[0x1] = 0x12;
         cpu.tick(1);
@@ -771,7 +824,8 @@ mod instruction_tests {
     }
     #[test]
     fn test_sne_9xy0_skip() {
-        let mut cpu = Cpu::new(vec![0x90, 0x10], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0x90, 0x10], 0x0200);
         cpu.registers.v[0x0] = 0x12;
         cpu.registers.v[0x1] = 0x93;
         cpu.tick(1);
@@ -780,14 +834,16 @@ mod instruction_tests {
 
     #[test]
     fn test_ld_annn() {
-        let mut cpu = Cpu::new(vec![0xa1, 0x23], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xa1, 0x23], 0x0200);
         cpu.tick(1);
         assert_eq!(cpu.registers.i, 0x123);
     }
 
     #[test]
     fn test_jp_bnnn() {
-        let mut cpu = Cpu::new(vec![0xb4, 0x03], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xb4, 0x03], 0x0200);
         cpu.registers.v[0] = 0x53;
         cpu.tick(1);
         assert_eq!(cpu.registers.pc, 0x456);
@@ -795,14 +851,16 @@ mod instruction_tests {
 
     #[test]
     fn test_skp_ex9e_no_skip() {
-        let mut cpu = Cpu::new(vec![0xE0, 0x9E], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xE0, 0x9E], 0x0200);
         cpu.registers.v[0] = 0x6;
         cpu.tick(1);
         assert_eq!(cpu.registers.pc, 0x0202);
     }
     #[test]
     fn test_skp_ex9e_skip() {
-        let mut cpu = Cpu::new(vec![0xE0, 0x9E], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xE0, 0x9E], 0x0200);
         cpu.registers.v[0] = 0x6;
         cpu.keypad.set_key(0x06, true);
         cpu.tick(1);
@@ -811,14 +869,16 @@ mod instruction_tests {
 
     #[test]
     fn test_skp_exa1_no_skip() {
-        let mut cpu = Cpu::new(vec![0xE0, 0xA1], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xE0, 0xA1], 0x0200);
         cpu.registers.v[0] = 0x6;
         cpu.tick(1);
         assert_eq!(cpu.registers.pc, 0x0204);
     }
     #[test]
     fn test_skp_exa1_skip() {
-        let mut cpu = Cpu::new(vec![0xE0, 0xA1], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xE0, 0xA1], 0x0200);
         cpu.registers.v[0] = 0x6;
         cpu.keypad.set_key(0x06, true);
         cpu.tick(1);
@@ -827,7 +887,8 @@ mod instruction_tests {
 
     #[test]
     fn test_ld_fx0a() {
-        let mut cpu = Cpu::new(vec![0xF0, 0x0A], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xF0, 0x0A], 0x0200);
         cpu.tick(1);
         assert_eq!(cpu.registers.pc, 0x0200);
         assert_eq!(cpu.registers.v[0], 0x0);
@@ -843,7 +904,8 @@ mod instruction_tests {
 
     #[test]
     fn test_ld_fx1e() {
-        let mut cpu = Cpu::new(vec![0xF0, 0x1E], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xF0, 0x1E], 0x0200);
         cpu.registers.v[0] = 0x20;
         cpu.registers.i = 0x94;
         cpu.tick(1);
@@ -853,7 +915,8 @@ mod instruction_tests {
 
     #[test]
     fn test_ld_fx33() {
-        let mut cpu = Cpu::new(vec![0xF0, 0x33], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xF0, 0x33], 0x0200);
         cpu.registers.v[0] = 0xC4; // 196
         cpu.registers.i = 0x500;
         cpu.tick(1);
@@ -864,7 +927,8 @@ mod instruction_tests {
 
     #[test]
     fn test_ld_fx55_first_four() {
-        let mut cpu = Cpu::new(vec![0xF3, 0x55], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xF3, 0x55], 0x0200);
         cpu.registers.v[0] = 0x12;
         cpu.registers.v[1] = 0x34;
         cpu.registers.v[2] = 0x56;
@@ -880,7 +944,8 @@ mod instruction_tests {
     }
     #[test]
     fn test_ld_fx55_one() {
-        let mut cpu = Cpu::new(vec![0xF0, 0x55], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xF0, 0x55], 0x0200);
         cpu.registers.v[0] = 0x12;
         cpu.registers.v[1] = 0x34;
         cpu.registers.i = 0x500;
@@ -891,7 +956,8 @@ mod instruction_tests {
 
     #[test]
     fn test_ld_fx65_first_four() {
-        let mut cpu = Cpu::new(vec![0xF3, 0x65], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xF3, 0x65], 0x0200);
         cpu.memory.write(0x500, 0x12);
         cpu.memory.write(0x501, 0x34);
         cpu.memory.write(0x502, 0x56);
@@ -907,7 +973,8 @@ mod instruction_tests {
     }
     #[test]
     fn test_ld_fx65_one() {
-        let mut cpu = Cpu::new(vec![0xF0, 0x65], 0x0200);
+        let mut cpu = Cpu::new();
+        cpu.load_rom(vec![0xF0, 0x65], 0x0200);
         cpu.memory.write(0x500, 0x12);
         cpu.memory.write(0x501, 0x34);
         cpu.registers.i = 0x500;

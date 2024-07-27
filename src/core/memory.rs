@@ -41,7 +41,7 @@ pub const HEX_SPRITES_START_MEM: u16 = 0x0000;
 pub struct Memory([u8; MEMORY_SIZE]);
 
 impl Memory {
-    pub fn new(program: Vec<u8>, program_begin: u16) -> Memory {
+    pub fn new() -> Memory {
         let mut mem = Memory {
             0: [0; MEMORY_SIZE],
         };
@@ -54,15 +54,17 @@ impl Memory {
             }
         }
 
+        mem
+    }
+
+    pub fn load_rom(&mut self, program: Vec<u8>, program_begin: u16) {
         for (index, &data) in program.iter().enumerate() {
-            let (addr, overflows) = (program_begin).overflowing_add(index as u16);
+            let (addr, overflows) = program_begin.overflowing_add(index as u16);
             if overflows {
                 panic!("Program read overflowed. Stopping.");
             }
-            mem.write(addr, data);
+            self.write(addr, data);
         }
-
-        mem
     }
 
     pub fn write(&mut self, addr: u16, data: u8) {
@@ -100,7 +102,8 @@ mod memory_tests {
 
     #[test]
     fn test_read_instruction() {
-        let mem = Memory::new(vec![0x12, 0x34], 0x0200);
+        let mut mem = Memory::new();
+        mem.load_rom(vec![0x12, 0x34], 0x0200);
         let instruction = mem.read_instruction(0x0200);
         assert_eq!(instruction.parts().0, 0x01);
         assert_eq!(instruction.parts().1, 0x02);

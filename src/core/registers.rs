@@ -54,12 +54,12 @@ pub struct Registers {
 }
 
 impl Registers {
-    pub fn new(pc_begin: u16) -> Registers {
+    pub fn new() -> Registers {
         Registers {
             v: [0; 16],
             i: 0,
             timers: [Timer::new(), Timer::new()],
-            pc: pc_begin,
+            pc: 0,
             sp: 0,
             stack: [0; 16],
         }

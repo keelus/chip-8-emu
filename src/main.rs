@@ -18,6 +18,8 @@ use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::keyboard::Keycode;
 use sdl2::AudioSubsystem;
 
+mod graphics;
+
 // Sample SquareWave struct code from SDL2's example
 struct SquareWave {
     phase_inc: f32,
@@ -76,16 +78,15 @@ impl beep::BeepHandler for BeepHandler {
 
 const PROGRAM_BEGIN: u16 = 0x0200;
 
-const SCALE: usize = 10;
+const SCALE: usize = 20;
 
 const MENU_BAR_HEIGHT: usize = 39;
 
 const WINDOW_WIDTH: usize = screen::WIDTH * SCALE;
 const WINDOW_HEIGHT: usize = screen::HEIGHT * SCALE + MENU_BAR_HEIGHT;
 
-const GL_VERTEX_TOP_MARGIN: f32 = (WINDOW_HEIGHT - MENU_BAR_HEIGHT) as f32 / WINDOW_HEIGHT as f32;
-
 fn main() {
+    let mut loaded_rom = false;
     // Initialize SDL2 window
     let sdl = sdl2::init().unwrap();
     let video_subsystem = sdl.video().unwrap();
@@ -125,14 +126,11 @@ fn main() {
     // Get texture and buffer where the emulator will render
     let (mut buffer, tex) = unsafe {
         renderer.gl_context().clear_color(0.1, 0.1, 0.1, 1.0);
-        setup_opengl(&mut renderer)
+        graphics::setup_opengl(&mut renderer)
     };
 
     // Setup Chip-8 and sound
-    let rom_name = "smiley";
-    let rom = fs::read(format!("./roms/{}.ch8", rom_name)).unwrap();
-
-    let mut cpu = Cpu::new(rom, PROGRAM_BEGIN);
+    let mut cpu = Cpu::new();
 
     let desired_spec = AudioSpecDesired {
         freq: Some(22_100),
@@ -148,7 +146,8 @@ fn main() {
 
     let mut last = Instant::now();
 
-    'running: loop {
+    let mut running = true;
+    'running_loop: while running {
         let now = Instant::now();
         let diff = now.duration_since(last).as_secs_f64();
         let mut fps = 0.0;
@@ -160,7 +159,9 @@ fn main() {
         for event in event_loop.poll_iter() {
             platform.handle_event(&mut imgui, &event);
             match event {
-                sdl2::event::Event::Quit { .. } => break 'running,
+                sdl2::event::Event::Quit { .. } => {
+                    break 'running_loop;
+                }
                 Event::KeyUp { keycode, .. } => {
                     if let Some(key) = keycode {
                         match key {
@@ -240,10 +241,27 @@ fn main() {
             let main_menu = ui.begin_menu_bar().unwrap();
             {
                 if let Some(menu) = ui.begin_menu("File") {
-                    ui.menu_item_config("Load ROM").shortcut("Ctrl + O").build();
-                    ui.menu_item_config("Close ROM")
+                    let btn = ui.menu_item_config("Load ROM").shortcut("Ctrl + O").build();
+                    if btn {
+                        let rom_name = "7-beep";
+                        let rom = fs::read(format!("./roms/{}.ch8", rom_name)).unwrap();
+                        cpu.load_rom(rom, PROGRAM_BEGIN);
+                    }
+                    if ui
+                        .menu_item_config("Close ROM")
                         .shortcut("Ctrl + W")
-                        .build();
+                        .build()
+                    {
+                        cpu.clear();
+                        unsafe {
+                            graphics::update_render(
+                                &mut renderer,
+                                &mut buffer,
+                                &tex,
+                                &cpu.screen.0,
+                            );
+                        }
+                    };
                     ui.separator();
                     ui.menu_item_config("Load state")
                         .shortcut("Ctrl + L")
@@ -252,7 +270,9 @@ fn main() {
                         .shortcut("Ctrl + S")
                         .build();
                     ui.separator();
-                    ui.menu_item("Exit");
+                    if ui.menu_item("Exit") {
+                        running = false;
+                    }
                     menu.end();
                 }
                 if let Some(_) = ui.begin_menu("Inspect") {
@@ -302,6 +322,26 @@ fn main() {
                 disabled_scope.end();
             }
             main_menu.end();
+
+            if !cpu.rom_loaded {
+                let no_rom_msg = "No ROM loaded!";
+                let text_size = ui.calc_text_size(no_rom_msg);
+                ui.set_cursor_pos([
+                    io.display_size[0] / 2.0 - text_size[0] / 2.0,
+                    io.display_size[1] / 2.0 - text_size[1] / 2.0,
+                ]);
+                ui.text(no_rom_msg);
+                let size = [80.0, 0.0];
+                ui.set_cursor_pos([
+                    io.display_size[0] / 2.0 - size[0] / 2.0,
+                    io.display_size[1] / 2.0 + 15.0,
+                ]);
+                if ui.button_with_size("Load ROM", size) {
+                    let rom_name = "7-beep";
+                    let rom = fs::read(format!("./roms/{}.ch8", rom_name)).unwrap();
+                    cpu.load_rom(rom, PROGRAM_BEGIN);
+                }
+            }
         });
 
         let draw_data = imgui.render();
@@ -309,7 +349,7 @@ fn main() {
         unsafe {
             // Update buffer to the latest emulator screen
             // TODO: Do this only when necessary
-            update_render(&mut renderer, &mut buffer, &tex, &cpu.screen.0);
+            graphics::update_render(&mut renderer, &mut buffer, &tex, &cpu.screen.0);
 
             // Clear and draw the screen
             renderer.gl_context().clear(glow::COLOR_BUFFER_BIT);
@@ -326,216 +366,4 @@ fn main() {
         // Although VSync is present, ensure we don't get more than 100fps
         timer_subsystem.delay(10); // 1000ms / 100fps = 10ms
     }
-}
-
-unsafe fn update_render(
-    renderer: &mut AutoRenderer,
-    buffer: &mut [u8; screen::WIDTH * screen::HEIGHT * 3],
-    texture: &glow::Texture,
-    screen_data: &[u64; screen::HEIGHT],
-) {
-    // Update the buffer data
-    let mut buff_idx = 0;
-    for row in screen_data {
-        for col in 0x0..screen::WIDTH {
-            let mask: u64 = 0x1 << (63 - col);
-            let pixel_on = (row & mask) != 0;
-
-            if pixel_on {
-                buffer[buff_idx] = 0xFF;
-                buffer[buff_idx + 1] = 0xFF;
-                buffer[buff_idx + 2] = 0xFF;
-            } else {
-                buffer[buff_idx] = 0x0;
-                buffer[buff_idx + 1] = 0x0;
-                buffer[buff_idx + 2] = 0x0;
-            }
-
-            buff_idx += 3;
-        }
-    }
-
-    // Render the buffer into the texture
-    renderer
-        .gl_context()
-        .bind_texture(glow::TEXTURE_2D, Some(*texture));
-    renderer.gl_context().tex_image_2d(
-        glow::TEXTURE_2D,
-        0,
-        glow::RGB as i32,
-        screen::WIDTH as i32,
-        screen::HEIGHT as i32,
-        0,
-        glow::RGB,
-        glow::UNSIGNED_BYTE,
-        Some(buffer),
-    );
-}
-
-unsafe fn setup_opengl(
-    renderer: &mut AutoRenderer,
-) -> ([u8; screen::WIDTH * screen::HEIGHT * 3], glow::Texture) {
-    #[rustfmt::skip]
-    let vertices: [f32; 16] = [
-        1.0, GL_VERTEX_TOP_MARGIN, 1.0, 0.0, // Top-right
-        -1.0, GL_VERTEX_TOP_MARGIN, 0.0, 0.0, // Top-left
-        1.0, -1.0, 1.0, 1.0, // Bottom-right
-        -1.0, -1.0, 0.0, 1.0, // Bottom-left
-    ];
-    let elements: [u32; 6] = [
-        0, 1, 2, // Top-left triangle
-        1, 2, 3, // Bottom-right triangle
-    ];
-
-    const VERTEX_SHADER_SRC: &str = "
-        #version 150 core
-
-        in vec2 position;
-        in vec2 texcoord;
-        out vec2 Texcoord;
-
-        void main()
-        {
-            Texcoord = texcoord;
-            gl_Position = vec4(position, 0.0, 1.0);
-        }
-    ";
-
-    const FRAGMENT_SHADER_SRC: &str = "
-        #version 150 core
-
-        in vec2 Texcoord;
-        out vec4 outColor;
-        uniform sampler2D tex;
-
-        void main()
-        {
-            outColor = texture(tex, Texcoord);
-        }
-    ";
-
-    // Setup vertex shader
-    let vertex_shader = renderer
-        .gl_context()
-        .create_shader(glow::VERTEX_SHADER)
-        .unwrap();
-    renderer
-        .gl_context()
-        .shader_source(vertex_shader, VERTEX_SHADER_SRC);
-    renderer.gl_context().compile_shader(vertex_shader);
-
-    // Setup fragment shader
-    let fragment_shader = renderer
-        .gl_context()
-        .create_shader(glow::FRAGMENT_SHADER)
-        .unwrap();
-    renderer
-        .gl_context()
-        .shader_source(fragment_shader, FRAGMENT_SHADER_SRC);
-    renderer.gl_context().compile_shader(fragment_shader);
-
-    // Combine vertex & fragment shaders into a program
-    let shader_program = renderer.gl_context().create_program().unwrap();
-    renderer
-        .gl_context()
-        .attach_shader(shader_program, vertex_shader);
-    renderer
-        .gl_context()
-        .attach_shader(shader_program, fragment_shader);
-    renderer
-        .gl_context()
-        .bind_frag_data_location(shader_program, 0, "outColor");
-    renderer.gl_context().link_program(shader_program);
-    renderer.gl_context().use_program(Some(shader_program));
-
-    // VAO
-    let vao = renderer.gl_context().create_vertex_array().unwrap();
-    renderer.gl_context().bind_vertex_array(Some(vao));
-
-    // Create the buffer to store the vertices
-    let vbo = renderer.gl_context().create_buffer().unwrap();
-    renderer
-        .gl_context()
-        .bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
-    renderer.gl_context().buffer_data_u8_slice(
-        glow::ARRAY_BUFFER,
-        &vertices.align_to::<u8>().1,
-        glow::STATIC_DRAW,
-    );
-
-    // Create the element buffer to store both triangles
-    let ebo = renderer.gl_context().create_buffer().unwrap();
-    renderer
-        .gl_context()
-        .bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ebo));
-    renderer.gl_context().buffer_data_u8_slice(
-        glow::ELEMENT_ARRAY_BUFFER,
-        &elements.align_to::<u8>().1,
-        glow::STATIC_DRAW,
-    );
-
-    // Setup shader variables
-    let pos_attrib = renderer
-        .gl_context()
-        .get_attrib_location(shader_program, "position")
-        .unwrap() as u32;
-    renderer.gl_context().enable_vertex_attrib_array(pos_attrib);
-    renderer.gl_context().vertex_attrib_pointer_f32(
-        pos_attrib,
-        2,
-        glow::FLOAT,
-        false,
-        4 * std::mem::size_of::<f32>() as i32,
-        0,
-    );
-
-    let tcoord_attrib = renderer
-        .gl_context()
-        .get_attrib_location(shader_program, "texcoord")
-        .unwrap() as u32;
-    renderer
-        .gl_context()
-        .enable_vertex_attrib_array(tcoord_attrib);
-    renderer.gl_context().vertex_attrib_pointer_f32(
-        tcoord_attrib,
-        2,
-        glow::FLOAT,
-        false,
-        4 * std::mem::size_of::<f32>() as i32,
-        2 * std::mem::size_of::<f32>() as i32,
-    );
-
-    // Create the main texture for the emulator
-    let tex = renderer.gl_context().create_texture().unwrap();
-    renderer
-        .gl_context()
-        .bind_texture(glow::TEXTURE_2D, Some(tex));
-    renderer
-        .gl_context()
-        .pixel_store_i32(glow::UNPACK_ALIGNMENT, 1);
-    renderer.gl_context().tex_parameter_i32(
-        glow::TEXTURE_2D,
-        glow::TEXTURE_MIN_FILTER,
-        glow::NEAREST as i32,
-    );
-    renderer.gl_context().tex_parameter_i32(
-        glow::TEXTURE_2D,
-        glow::TEXTURE_MAG_FILTER,
-        glow::NEAREST as i32,
-    );
-
-    let buffer = [0 as u8; (screen::WIDTH * screen::HEIGHT * 3) as usize];
-    renderer.gl_context().tex_image_2d(
-        glow::TEXTURE_2D,
-        0,
-        glow::RGB as i32,
-        screen::WIDTH as i32,
-        screen::HEIGHT as i32,
-        0,
-        glow::RGB,
-        glow::UNSIGNED_BYTE,
-        Some(&buffer),
-    );
-
-    (buffer, tex)
 }
