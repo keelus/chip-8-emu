@@ -129,7 +129,7 @@ fn main() {
     };
 
     // Setup Chip-8 and sound
-    let rom_name = "7-beep";
+    let rom_name = "smiley";
     let rom = fs::read(format!("./roms/{}.ch8", rom_name)).unwrap();
 
     let mut cpu = Cpu::new(rom, PROGRAM_BEGIN);
@@ -239,12 +239,67 @@ fn main() {
         w.build(|| {
             let main_menu = ui.begin_menu_bar().unwrap();
             {
-                if let Some(menu) = ui.begin_menu("Menu1") {
-                    ui.menu_item("Another option");
-                    ui.menu_item("Another option");
+                if let Some(menu) = ui.begin_menu("File") {
+                    ui.menu_item_config("Load ROM").shortcut("Ctrl + O").build();
+                    ui.menu_item_config("Close ROM")
+                        .shortcut("Ctrl + W")
+                        .build();
+                    ui.separator();
+                    ui.menu_item_config("Load state")
+                        .shortcut("Ctrl + L")
+                        .build();
+                    ui.menu_item_config("Save state")
+                        .shortcut("Ctrl + S")
+                        .build();
+                    ui.separator();
+                    ui.menu_item("Exit");
                     menu.end();
                 }
-                let _ = ui.begin_menu(format! {"FPS: {:.2}", fps});
+                if let Some(_) = ui.begin_menu("Inspect") {
+                    if let Some(_) = ui.begin_menu("Memory") {
+                        ui.menu_item("View");
+                        ui.menu_item("Edit");
+                    }
+                    if let Some(_) = ui.begin_menu("Registers") {
+                        ui.menu_item("View");
+                        ui.menu_item("Edit");
+                    }
+                    if let Some(_) = ui.begin_menu("Stack") {
+                        ui.menu_item("View");
+                        ui.menu_item("Edit");
+                    }
+                }
+                if let Some(menu) = ui.begin_menu("Options") {
+                    ui.menu_item_config("Main options").enabled(false).build();
+                    ui.menu_item("Timings");
+                    ui.menu_item("Sound");
+                    ui.menu_item("Key bindings");
+                    ui.menu_item("Render");
+                    ui.separator();
+                    ui.menu_item_config("Advanced").enabled(false).build();
+                    ui.menu_item("Quirks");
+                    menu.end();
+                }
+
+                let fps_width = 90.0;
+                let margin = ui.cursor_pos()[0] + ui.content_region_avail()[0] - fps_width;
+                let disabled_scope = ui.begin_disabled(true);
+                {
+                    ui.set_cursor_pos([margin, ui.cursor_pos()[1]]);
+                    let align_scope =
+                        ui.push_style_var(imgui::StyleVar::ButtonTextAlign([1.0, 0.0]));
+                    {
+                        let no_bg_scope =
+                            ui.push_style_color(imgui::StyleColor::Button, [0.0, 0.0, 0.0, 0.0]);
+                        {
+                            let _ =
+                                ui.button_with_size(format! {"FPS: {:.2}", fps}, [fps_width, 0.0]);
+                        }
+                        no_bg_scope.end();
+                    }
+                    align_scope.end();
+                }
+                disabled_scope.end();
             }
             main_menu.end();
         });
@@ -266,7 +321,7 @@ fn main() {
             window.gl_swap_window();
         }
 
-        cpu.tick(10);
+        cpu.tick(200);
 
         // Although VSync is present, ensure we don't get more than 100fps
         timer_subsystem.delay(10); // 1000ms / 100fps = 10ms
