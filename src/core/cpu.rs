@@ -309,7 +309,7 @@ impl Cpu {
 
                 let mut collision = false;
                 for idx in 0..n {
-                    let addr = HEX_SPRITES_START_MEM + i + idx;
+                    let addr = i.wrapping_add(idx);
                     let mut data = (self.memory.read(addr) as u64) << 56;
 
                     if CLIPPING {
@@ -394,8 +394,9 @@ impl Cpu {
             }
             (0xF, _, 2, 9) => {
                 // LD - fx29
-                let x = instruction.x() as u16;
-                let addr = HEX_SPRITES_START_MEM.wrapping_add(x * HEX_SPRITES_HEIGHT as u16);
+                let x = instruction.x();
+                let vx = self.registers.v[x as usize];
+                let addr = HEX_SPRITES_START_MEM.wrapping_add((vx * HEX_SPRITES_HEIGHT) as u16);
                 self.registers.i = addr;
             }
             (0xF, _, 3, 3) => {
