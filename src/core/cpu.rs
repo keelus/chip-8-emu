@@ -52,7 +52,7 @@ pub struct Cpu {
 
     pub rom_loaded: bool,
     last_draw: Option<Instant>,
-    pub halted: bool,
+    halted: bool,
 }
 
 impl Cpu {
@@ -491,6 +491,22 @@ impl Cpu {
 
         self.registers.pc += 2;
         self.handle_beep();
+    }
+
+    pub fn is_halted(&self) -> bool {
+        self.halted
+    }
+
+    pub fn halt(&mut self) {
+        self.halted = true;
+    }
+
+    pub fn resume(&mut self) {
+        self.halted = false;
+    }
+
+    pub fn toggle_halt(&mut self) {
+        self.halted = !self.halted;
     }
 
     pub fn handle_beep(&mut self) {

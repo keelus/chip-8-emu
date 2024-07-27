@@ -301,7 +301,20 @@ fn main() {
                     menu.end();
                 }
 
+                let halt_width = 55.0;
                 let fps_width = 90.0;
+                let margin =
+                    ui.cursor_pos()[0] + ui.content_region_avail()[0] - halt_width - fps_width;
+                let disabled_scope = ui.begin_disabled(false);
+                {
+                    ui.set_cursor_pos([margin, ui.cursor_pos()[1]]);
+                    let text = if cpu.is_halted() { "Resume" } else { "Halt" };
+                    if ui.button_with_size(text, [halt_width, 0.0]) {
+                        cpu.toggle_halt();
+                    }
+                }
+
+                disabled_scope.end();
                 let margin = ui.cursor_pos()[0] + ui.content_region_avail()[0] - fps_width;
                 let disabled_scope = ui.begin_disabled(true);
                 {
