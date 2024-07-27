@@ -90,6 +90,7 @@ fn main() {
     let sdl = sdl2::init().unwrap();
     let video_subsystem = sdl.video().unwrap();
     let audio_subsystem = sdl.audio().unwrap();
+    let mut timer_subsystem = sdl.timer().unwrap();
     let mut event_loop = sdl.event_pump().unwrap();
 
     let window = video_subsystem
@@ -107,7 +108,7 @@ fn main() {
     let gl = unsafe {
         glow::Context::from_loader_function(|s| video_subsystem.gl_get_proc_address(s) as *const _)
     };
-    let _ = video_subsystem.gl_set_swap_interval(SwapInterval::Immediate);
+    let _ = video_subsystem.gl_set_swap_interval(SwapInterval::VSync);
 
     // Initialize Imgui
     let mut imgui = Context::create();
@@ -130,6 +131,7 @@ fn main() {
     // Setup Chip-8 and sound
     let rom_name = "7-beep";
     let rom = fs::read(format!("./roms/{}.ch8", rom_name)).unwrap();
+
     let mut cpu = Cpu::new(rom, PROGRAM_BEGIN);
 
     let desired_spec = AudioSpecDesired {
@@ -264,7 +266,10 @@ fn main() {
             window.gl_swap_window();
         }
 
-        cpu.tick();
+        cpu.tick(10);
+
+        // Although VSync is present, ensure we don't get more than 100fps
+        timer_subsystem.delay(10); // 1000ms / 100fps = 10ms
     }
 }
 
