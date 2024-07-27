@@ -5,5 +5,8 @@ authors = ["Hugo Moreda (keelus)]"]
 edition = "2021"
 
 [dependencies]
+imgui = "0.12.0"
+imgui-glow-renderer = "0.12.0"
+imgui-sdl2-support = "0.12.0"
 rand = "0.8.5"
-sdl2 = "0.37.0"
+sdl2 = "0.34.0"
