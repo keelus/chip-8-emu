@@ -1,4 +1,5 @@
 use imgui::Condition;
+use imgui::ItemHoveredFlags;
 use sdl2::video::SwapInterval;
 
 use glow::HasContext;
@@ -6,6 +7,7 @@ use imgui::Context;
 use imgui_glow_renderer::glow;
 use imgui_glow_renderer::AutoRenderer;
 use imgui_sdl2_support::SdlPlatform;
+use rfd;
 use sdl2::event::Event;
 
 mod core;
@@ -241,15 +243,18 @@ fn main() {
             let main_menu = ui.begin_menu_bar().unwrap();
             {
                 if let Some(menu) = ui.begin_menu("File") {
-                    let btn = ui.menu_item_config("Load ROM").shortcut("Ctrl + O").build();
+                    let btn = ui
+                        .menu_item_config("Load ROM")
+                        .enabled(!cpu.rom_loaded)
+                        .shortcut("Ctrl + O")
+                        .build();
                     if btn {
-                        let rom_name = "7-beep";
-                        let rom = fs::read(format!("./roms/{}.ch8", rom_name)).unwrap();
-                        cpu.load_rom(rom, PROGRAM_BEGIN);
+                        rom_select_window(&mut cpu);
                     }
                     if ui
                         .menu_item_config("Close ROM")
                         .shortcut("Ctrl + W")
+                        .enabled(cpu.rom_loaded)
                         .build()
                     {
                         cpu.clear();
@@ -275,20 +280,33 @@ fn main() {
                     }
                     menu.end();
                 }
-                if let Some(_) = ui.begin_menu("Inspect") {
-                    if let Some(_) = ui.begin_menu("Memory") {
-                        ui.menu_item("View");
-                        ui.menu_item("Edit");
+                let disabled_scope = ui.begin_disabled(!cpu.is_halted() || !cpu.rom_loaded);
+                {
+                    if let Some(_) = ui.begin_menu("Ispect") {
+                        if let Some(_) = ui.begin_menu("Memory") {
+                            ui.menu_item("View");
+                            ui.menu_item("Edit");
+                        }
+                        if let Some(_) = ui.begin_menu("Registers") {
+                            ui.menu_item("View");
+                            ui.menu_item("Edit");
+                        }
+                        if let Some(_) = ui.begin_menu("Stack") {
+                            ui.menu_item("View");
+                            ui.menu_item("Edit");
+                        }
                     }
-                    if let Some(_) = ui.begin_menu("Registers") {
-                        ui.menu_item("View");
-                        ui.menu_item("Edit");
-                    }
-                    if let Some(_) = ui.begin_menu("Stack") {
-                        ui.menu_item("View");
-                        ui.menu_item("Edit");
+
+                    if ui.is_item_hovered_with_flags(ItemHoveredFlags::ALLOW_WHEN_DISABLED) {
+                        if !cpu.rom_loaded {
+                            ui.tooltip_text("Please load a ROM first.");
+                        } else if !cpu.is_halted() {
+                            ui.tooltip_text("Please halt the emulation first.");
+                        }
                     }
                 }
+                disabled_scope.end();
+
                 if let Some(menu) = ui.begin_menu("Options") {
                     ui.menu_item_config("Main options").enabled(false).build();
                     ui.menu_item("Timings");
@@ -350,9 +368,7 @@ fn main() {
                     io.display_size[1] / 2.0 + 15.0,
                 ]);
                 if ui.button_with_size("Load ROM", size) {
-                    let rom_name = "7-beep";
-                    let rom = fs::read(format!("./roms/{}.ch8", rom_name)).unwrap();
-                    cpu.load_rom(rom, PROGRAM_BEGIN);
+                    rom_select_window(&mut cpu);
                 }
             }
         });
@@ -378,5 +394,18 @@ fn main() {
 
         // Although VSync is present, ensure we don't get more than 100fps
         timer_subsystem.delay(10); // 1000ms / 100fps = 10ms
+    }
+}
+
+fn rom_select_window(cpu: &mut Cpu) {
+    let path = std::env::current_dir().unwrap();
+    let res = rfd::FileDialog::new()
+        .add_filter("ch8", &["ch8"])
+        .set_directory(&path)
+        .pick_file();
+
+    if let Some(file_path) = res {
+        let rom = fs::read(file_path).unwrap();
+        cpu.load_rom(rom, PROGRAM_BEGIN);
     }
 }
