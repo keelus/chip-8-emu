@@ -280,9 +280,10 @@ fn main() {
                     }
                     menu.end();
                 }
-                let disabled_scope = ui.begin_disabled(!cpu.is_halted() || !cpu.rom_loaded);
+
+                let inspect_enabled = cpu.is_halted() && cpu.rom_loaded;
                 {
-                    if let Some(_) = ui.begin_menu("Ispect") {
+                    if let Some(_) = ui.begin_menu_with_enabled("Ispect", inspect_enabled) {
                         if let Some(_) = ui.begin_menu("Memory") {
                             ui.menu_item("View");
                             ui.menu_item("Edit");
@@ -297,15 +298,17 @@ fn main() {
                         }
                     }
 
-                    if ui.is_item_hovered_with_flags(ItemHoveredFlags::ALLOW_WHEN_DISABLED) {
+                    if !inspect_enabled
+                        && ui.is_item_hovered_with_flags(ItemHoveredFlags::ALLOW_WHEN_DISABLED)
+                    {
                         if !cpu.rom_loaded {
                             ui.tooltip_text("Please load a ROM first.");
-                        } else if !cpu.is_halted() {
+                        } else {
                             ui.tooltip_text("Please halt the emulation first.");
                         }
                     }
                 }
-                disabled_scope.end();
+                //disabled_scope.end();
 
                 if let Some(menu) = ui.begin_menu("Options") {
                     ui.menu_item_config("Main options").enabled(false).build();
