@@ -16,6 +16,8 @@ use core::{cpu::Cpu, screen};
 use std::fs;
 use std::time::Instant;
 
+use mint::*;
+
 use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
 use sdl2::keyboard::Keycode;
 use sdl2::AudioSubsystem;
@@ -148,6 +150,9 @@ fn main() {
 
     let mut last = Instant::now();
 
+    let mut active_schema_id = 0;
+    let mut active_schema: ColorSchema = get_color_schema(active_schema_id).unwrap();
+
     let mut running = true;
     'running_loop: while running {
         let now = Instant::now();
@@ -264,6 +269,8 @@ fn main() {
                                 &mut buffer,
                                 &tex,
                                 &cpu.screen.0,
+                                &color_enabled_pixels,
+                                &color_disabled_pixels,
                             );
                         }
                     };
@@ -324,7 +331,11 @@ fn main() {
                         cpu.toggle_beep_enabled();
                     }
                     ui.menu_item("Key bindings");
-                    ui.menu_item("Render");
+                    if let Some(_) = ui.begin_menu("Color schema") {
+                        ui.combo("Selected schema:", &mut active_schema_id, &COLOR_SCHEMAS);
+                        // ui.color_picker3("Enabled pixels", &mut color_enabled_pixels);
+                        // ui.color_picker3("Disabled pixels", &mut color_disabled_pixels);
+                    }
                     ui.separator();
                     ui.menu_item_config("Advanced").enabled(false).build();
                     ui.menu_item("Quirks");
@@ -390,7 +401,14 @@ fn main() {
         unsafe {
             // Update buffer to the latest emulator screen
             // TODO: Do this only when necessary
-            graphics::update_render(&mut renderer, &mut buffer, &tex, &cpu.screen.0);
+            graphics::update_render(
+                &mut renderer,
+                &mut buffer,
+                &tex,
+                &cpu.screen.0,
+                &color_enabled_pixels,
+                &color_disabled_pixels,
+            );
 
             // Clear and draw the screen
             renderer.gl_context().clear(glow::COLOR_BUFFER_BIT);
@@ -419,5 +437,65 @@ fn rom_select_window(cpu: &mut Cpu) {
     if let Some(file_path) = res {
         let rom = fs::read(file_path).unwrap();
         cpu.load_rom(rom, PROGRAM_BEGIN);
+    }
+}
+
+struct ColorSchema {
+    name: &'static str,
+    enabled_px: Vector3<f32>,
+    disabled_px: Vector3<f32>,
+}
+
+impl ColorSchema {
+    pub fn new(name: &'static str, enabled: [f32; 3], disabled: [f32; 3]) -> ColorSchema {
+        ColorSchema {
+            name,
+            enabled_px: Vector3::from_slice(&enabled),
+            disabled_px: Vector3::from_slice(&disabled),
+        }
+    }
+    pub fn clone(&self) -> ColorSchema {
+        ColorSchema::new(
+            self.name,
+            [self.enabled_px.x, self.enabled_px.y, self.enabled_px.z],
+            [self.disabled_px.x, self.disabled_px.y, self.disabled_px.z],
+        )
+    }
+}
+
+static COLOR_SCHEMAS: [ColorSchema; 2] = [
+    ColorSchema {
+        name: "Default",
+        enabled_px: Vector3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+        disabled_px: Vector3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+    },
+    ColorSchema {
+        name: "Orange",
+        enabled_px: Vector3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+        disabled_px: Vector3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+    },
+];
+
+fn get_color_schema(idx: usize) -> Option<ColorSchema> {
+    if let Some(schema) = COLOR_SCHEMAS.get(idx) {
+        Some(schema.clone())
+    } else {
+        None
     }
 }

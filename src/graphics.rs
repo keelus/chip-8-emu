@@ -12,6 +12,8 @@ pub unsafe fn update_render(
     buffer: &mut [u8; screen::WIDTH * screen::HEIGHT * 3],
     texture: &glow::Texture,
     screen_data: &[u64; screen::HEIGHT],
+    color_enabled_pixels: &mint::Vector3<f32>,
+    color_disabled_pixels: &mint::Vector3<f32>,
 ) {
     // Update the buffer data
     let mut buff_idx = 0;
@@ -20,15 +22,15 @@ pub unsafe fn update_render(
             let mask: u64 = 0x1 << (63 - col);
             let pixel_on = (row & mask) != 0;
 
-            if pixel_on {
-                buffer[buff_idx] = 0xFF;
-                buffer[buff_idx + 1] = 0xFF;
-                buffer[buff_idx + 2] = 0xFF;
+            let color = if pixel_on {
+                color_enabled_pixels
             } else {
-                buffer[buff_idx] = 0x0;
-                buffer[buff_idx + 1] = 0x0;
-                buffer[buff_idx + 2] = 0x0;
-            }
+                color_disabled_pixels
+            };
+
+            buffer[buff_idx] = ((color.x) * 0xFF as f32) as u8;
+            buffer[buff_idx + 1] = ((color.y) * 0xFF as f32) as u8;
+            buffer[buff_idx + 2] = ((color.z) * 0xFF as f32) as u8;
 
             buff_idx += 3;
         }
