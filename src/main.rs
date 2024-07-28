@@ -312,8 +312,17 @@ fn main() {
 
                 if let Some(menu) = ui.begin_menu("Options") {
                     ui.menu_item_config("Main options").enabled(false).build();
-                    ui.menu_item("Timings");
-                    ui.menu_item("Sound");
+                    if let Some(_) = ui.begin_menu("Timings") {
+                        ui.slider("Draws per second", 30, 400, &mut cpu.draws_per_second);
+                        ui.slider("Ticks/cycles per frame", 1, 500, &mut cpu.ticks_per_frame);
+                    }
+                    if ui
+                        .menu_item_config("Sound enabled")
+                        .selected(cpu.is_beep_enabled())
+                        .build()
+                    {
+                        cpu.toggle_beep_enabled();
+                    }
                     ui.menu_item("Key bindings");
                     ui.menu_item("Render");
                     ui.separator();
@@ -393,7 +402,7 @@ fn main() {
             window.gl_swap_window();
         }
 
-        cpu.tick(200);
+        cpu.tick();
 
         // Although VSync is present, ensure we don't get more than 100fps
         timer_subsystem.delay(10); // 1000ms / 100fps = 10ms

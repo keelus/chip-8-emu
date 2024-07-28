@@ -7,7 +7,11 @@
 //
 // https://github.com/keelus/chip-8-emu
 
-use std::{borrow::BorrowMut, ops::Shr, time::Instant};
+use std::{
+    borrow::BorrowMut,
+    ops::Shr,
+    time::{Duration, Instant},
+};
 
 use imgui_glow_renderer::glow::PROGRAM_BINARY_LENGTH;
 use rand::Rng;
@@ -21,10 +25,6 @@ use super::{
     registers::{Registers, DELAY_TIMER, SOUND_TIMER},
     screen::Screen,
 };
-
-// By default, 60 draws per second
-const DRAWS_PER_SECOND: u64 = 60;
-const DRAW_INTERVAL: f64 = 1.0 / (DRAWS_PER_SECOND as f64);
 
 // If true, shift operations will shift Vy's value, storing
 // the result in Vx.
@@ -49,10 +49,14 @@ pub struct Cpu {
     pub keypad: Keypad,
 
     pub beep_handler: Option<Box<dyn BeepHandler>>,
+    beep_enabled: bool,
 
     pub rom_loaded: bool,
     last_draw: Option<Instant>,
     halted: bool,
+
+    pub draws_per_second: u32,
+    pub ticks_per_frame: u32,
 }
 
 impl Cpu {
@@ -64,10 +68,14 @@ impl Cpu {
             keypad: Keypad::new(),
 
             beep_handler: None,
+            beep_enabled: true,
 
             rom_loaded: false,
             last_draw: None,
             halted: false,
+
+            draws_per_second: 60,
+            ticks_per_frame: 10,
         }
     }
 
@@ -96,9 +104,9 @@ impl Cpu {
         self.beep_handler = None
     }
 
-    pub fn tick(&mut self, ticks: u16) {
+    pub fn tick(&mut self) {
         if !self.halted && self.rom_loaded {
-            for _i in 0..ticks {
+            for _i in 0..self.ticks_per_frame {
                 self.do_tick();
             }
         }
@@ -338,7 +346,10 @@ impl Cpu {
                 let now = Instant::now();
                 if let Some(last_draw) = self.last_draw {
                     let draw_diff = now.duration_since(last_draw).as_secs_f64();
-                    if draw_diff < DRAW_INTERVAL {
+                    let max = 1.0 / self.draws_per_second as f64;
+                    if draw_diff < max {
+                        // Revise thread sleep and other alternatives
+                        //std::thread::sleep(Duration::from_secs_f64(max - draw_diff));
                         return;
                     }
                 }
@@ -509,9 +520,30 @@ impl Cpu {
         self.halted = !self.halted;
     }
 
+    pub fn is_beep_enabled(&mut self) -> bool {
+        self.beep_enabled
+    }
+
+    pub fn enable_beep(&mut self) {
+        self.beep_enabled = true;
+        self.handle_beep();
+    }
+    pub fn disable_beep(&mut self) {
+        self.beep_enabled = false;
+        self.handle_beep();
+    }
+
+    pub fn toggle_beep_enabled(&mut self) {
+        if self.beep_enabled {
+            self.disable_beep();
+        } else {
+            self.enable_beep();
+        }
+    }
+
     pub fn handle_beep(&mut self) {
         if let Some(beep_handler) = self.beep_handler.borrow_mut() {
-            if self.registers.timers[SOUND_TIMER].read() > 0 {
+            if self.registers.timers[SOUND_TIMER].read() > 0 && self.beep_enabled {
                 beep_handler.start()
             } else {
                 beep_handler.stop()
@@ -536,7 +568,7 @@ mod instruction_tests {
             .0
             .iter_mut()
             .for_each(|row| *row = rand::thread_rng().gen_range(0..=u64::MAX));
-        cpu.tick(1);
+        cpu.tick();
         assert!(cpu.screen.0.iter().all(|row| *row == 0));
     }
     // SYS
@@ -547,7 +579,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x00, 0xEE], 0x0200);
         cpu.registers.sp = 0;
         cpu.registers.stack[0xF] = 0x0300;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x302);
         assert_eq!(cpu.registers.sp, 0xF);
     }
@@ -557,7 +589,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x00, 0xEE], 0x0200);
         cpu.registers.sp = 0x1;
         cpu.registers.stack[0x0] = 0x0300;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x302);
         assert_eq!(cpu.registers.sp, 0x0);
     }
@@ -566,7 +598,7 @@ mod instruction_tests {
     fn test_jp_1nnn() {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x11, 0x23], 0x0200);
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x123);
     }
 
@@ -574,7 +606,7 @@ mod instruction_tests {
     fn test_call_2nnn() {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x21, 0x23], 0x0200);
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x123);
         assert_eq!(cpu.registers.sp, 1);
         assert_eq!(cpu.registers.stack[0], 0x0200);
@@ -584,7 +616,7 @@ mod instruction_tests {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x21, 0x23], 0x0200);
         cpu.registers.sp = 0xF;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x123);
         assert_eq!(cpu.registers.sp, 0);
         assert_eq!(cpu.registers.stack[0xF], 0x0200);
@@ -595,7 +627,7 @@ mod instruction_tests {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x30, 0x55], 0x0200);
         cpu.registers.v[0x0] = 0x15;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0202);
     }
     #[test]
@@ -603,7 +635,7 @@ mod instruction_tests {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x30, 0x55], 0x0200);
         cpu.registers.v[0x0] = 0x55;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0204);
     }
 
@@ -612,7 +644,7 @@ mod instruction_tests {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x40, 0x55], 0x0200);
         cpu.registers.v[0x0] = 0x55;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0202);
     }
     #[test]
@@ -620,7 +652,7 @@ mod instruction_tests {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x40, 0x55], 0x0200);
         cpu.registers.v[0x0] = 0x15;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0204);
     }
 
@@ -630,7 +662,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x50, 0x10], 0x0200);
         cpu.registers.v[0x0] = 0x28;
         cpu.registers.v[0x1] = 0x55;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0202);
     }
     #[test]
@@ -639,7 +671,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x50, 0x10], 0x0200);
         cpu.registers.v[0x0] = 0x15;
         cpu.registers.v[0x1] = 0x15;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0204);
     }
 
@@ -647,7 +679,7 @@ mod instruction_tests {
     fn test_ld_6xkk() {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x60, 0x12], 0x0200);
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0x12);
     }
 
@@ -656,7 +688,7 @@ mod instruction_tests {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x70, 0x12], 0x0200);
         cpu.registers.v[0x0] = 0x33;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0x45);
         assert_eq!(cpu.registers.v[0xF], 0); // Unchanged
     }
@@ -667,7 +699,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x80, 0x10], 0x0200);
         cpu.registers.v[0x0] = 0x12;
         cpu.registers.v[0x1] = 0x34;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0x34);
         assert_eq!(cpu.registers.v[0x1], 0x34); // Unchanged...
     }
@@ -678,7 +710,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x80, 0x11], 0x0200);
         cpu.registers.v[0x0] = 0b10101010;
         cpu.registers.v[0x1] = 0b01010101;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0xFF);
         assert_eq!(cpu.registers.v[0x1], 0b01010101);
     }
@@ -689,7 +721,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x80, 0x12], 0x0200);
         cpu.registers.v[0x0] = 0b10101010;
         cpu.registers.v[0x1] = 0b01010101;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0x0);
         assert_eq!(cpu.registers.v[0x1], 0b01010101);
     }
@@ -700,7 +732,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x80, 0x13], 0x0200);
         cpu.registers.v[0x0] = 0b10101111;
         cpu.registers.v[0x1] = 0b01011111;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0b11110000);
         assert_eq!(cpu.registers.v[0x1], 0b01011111);
     }
@@ -711,7 +743,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x80, 0x14], 0x0200);
         cpu.registers.v[0x0] = 0x22;
         cpu.registers.v[0x1] = 0x41;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0x63);
         assert_eq!(cpu.registers.v[0x1], 0x41);
         assert_eq!(cpu.registers.v[0xF], 0x0);
@@ -722,7 +754,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x80, 0x14], 0x0200);
         cpu.registers.v[0x0] = 0xF3;
         cpu.registers.v[0x1] = 0x41;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0x34);
         assert_eq!(cpu.registers.v[0x1], 0x41);
         assert_eq!(cpu.registers.v[0xF], 0x1);
@@ -734,7 +766,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x80, 0x15], 0x0200);
         cpu.registers.v[0x0] = 0xF3;
         cpu.registers.v[0x1] = 0x20;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0xD3);
         assert_eq!(cpu.registers.v[0x1], 0x20);
         assert_eq!(cpu.registers.v[0xF], 0x1);
@@ -745,7 +777,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x80, 0x15], 0x0200);
         cpu.registers.v[0x0] = 0x25;
         cpu.registers.v[0x1] = 0x80;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0xA5); // Wraps
         assert_eq!(cpu.registers.v[0x1], 0x80);
         assert_eq!(cpu.registers.v[0xF], 0x0);
@@ -760,7 +792,7 @@ mod instruction_tests {
         } else {
             cpu.registers.v[0x0] = 0b01111110;
         }
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0b00111111);
         assert_eq!(cpu.registers.v[0xF], 0x0);
     }
@@ -774,7 +806,7 @@ mod instruction_tests {
         } else {
             cpu.registers.v[0x0] = 0b00111111;
         }
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0b00011111);
         assert_eq!(cpu.registers.v[0xF], 0x1);
     }
@@ -785,7 +817,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x80, 0x17], 0x0200);
         cpu.registers.v[0x0] = 0x25;
         cpu.registers.v[0x1] = 0x80;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0x5B);
         assert_eq!(cpu.registers.v[0x1], 0x80);
         assert_eq!(cpu.registers.v[0xF], 0x1);
@@ -796,7 +828,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x80, 0x17], 0x0200);
         cpu.registers.v[0x0] = 0xF3;
         cpu.registers.v[0x1] = 0x20;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0x2D); // Wraps
         assert_eq!(cpu.registers.v[0x1], 0x20);
         assert_eq!(cpu.registers.v[0xF], 0x0);
@@ -811,7 +843,7 @@ mod instruction_tests {
         } else {
             cpu.registers.v[0x0] = 0b01111110;
         }
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0b11111100);
         assert_eq!(cpu.registers.v[0xF], 0x0);
     }
@@ -824,7 +856,7 @@ mod instruction_tests {
         } else {
             cpu.registers.v[0x0] = 0b11111100;
         }
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0b11111000);
         assert_eq!(cpu.registers.v[0xF], 0x1);
     }
@@ -835,7 +867,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x90, 0x10], 0x0200);
         cpu.registers.v[0x0] = 0x12;
         cpu.registers.v[0x1] = 0x12;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0202);
     }
     #[test]
@@ -844,7 +876,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0x90, 0x10], 0x0200);
         cpu.registers.v[0x0] = 0x12;
         cpu.registers.v[0x1] = 0x93;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0204);
     }
 
@@ -852,7 +884,7 @@ mod instruction_tests {
     fn test_ld_annn() {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0xa1, 0x23], 0x0200);
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.i, 0x123);
     }
 
@@ -861,7 +893,7 @@ mod instruction_tests {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0xb4, 0x03], 0x0200);
         cpu.registers.v[0] = 0x53;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x456);
     }
 
@@ -870,7 +902,7 @@ mod instruction_tests {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0xE0, 0x9E], 0x0200);
         cpu.registers.v[0] = 0x6;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0202);
     }
     #[test]
@@ -879,7 +911,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0xE0, 0x9E], 0x0200);
         cpu.registers.v[0] = 0x6;
         cpu.keypad.set_key(0x06, true);
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0204);
     }
 
@@ -888,7 +920,7 @@ mod instruction_tests {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0xE0, 0xA1], 0x0200);
         cpu.registers.v[0] = 0x6;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0204);
     }
     #[test]
@@ -897,7 +929,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0xE0, 0xA1], 0x0200);
         cpu.registers.v[0] = 0x6;
         cpu.keypad.set_key(0x06, true);
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0202);
     }
 
@@ -905,15 +937,15 @@ mod instruction_tests {
     fn test_ld_fx0a() {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0xF0, 0x0A], 0x0200);
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0200);
         assert_eq!(cpu.registers.v[0], 0x0);
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0200);
         assert_eq!(cpu.registers.v[0], 0x0);
         cpu.keypad.set_key(0x7, true);
         cpu.keypad.set_key(0x7, false);
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.pc, 0x0202);
         assert_eq!(cpu.registers.v[0], 0x7);
     }
@@ -924,7 +956,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0xF0, 0x1E], 0x0200);
         cpu.registers.v[0] = 0x20;
         cpu.registers.i = 0x94;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0], 0x20);
         assert_eq!(cpu.registers.i, 0xB4);
     }
@@ -935,7 +967,7 @@ mod instruction_tests {
         cpu.load_rom(vec![0xF0, 0x33], 0x0200);
         cpu.registers.v[0] = 0xC4; // 196
         cpu.registers.i = 0x500;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.memory.read(0x500), 1);
         assert_eq!(cpu.memory.read(0x501), 9);
         assert_eq!(cpu.memory.read(0x502), 6);
@@ -951,7 +983,7 @@ mod instruction_tests {
         cpu.registers.v[3] = 0x78;
         cpu.registers.v[4] = 0x9a;
         cpu.registers.i = 0x500;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.memory.read(0x500), 0x12);
         assert_eq!(cpu.memory.read(0x501), 0x34);
         assert_eq!(cpu.memory.read(0x502), 0x56);
@@ -965,7 +997,7 @@ mod instruction_tests {
         cpu.registers.v[0] = 0x12;
         cpu.registers.v[1] = 0x34;
         cpu.registers.i = 0x500;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.memory.read(0x500), 0x12);
         assert_eq!(cpu.memory.read(0x501), 0x00);
     }
@@ -980,7 +1012,7 @@ mod instruction_tests {
         cpu.memory.write(0x503, 0x78);
         cpu.memory.write(0x504, 0x9a);
         cpu.registers.i = 0x500;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0x12);
         assert_eq!(cpu.registers.v[0x1], 0x34);
         assert_eq!(cpu.registers.v[0x2], 0x56);
@@ -994,7 +1026,7 @@ mod instruction_tests {
         cpu.memory.write(0x500, 0x12);
         cpu.memory.write(0x501, 0x34);
         cpu.registers.i = 0x500;
-        cpu.tick(1);
+        cpu.tick();
         assert_eq!(cpu.registers.v[0x0], 0x12);
         assert_eq!(cpu.registers.v[0x1], 0x0);
     }
