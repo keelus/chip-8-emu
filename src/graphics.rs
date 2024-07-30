@@ -2,6 +2,8 @@ use glow::HasContext;
 use imgui_glow_renderer::glow;
 use imgui_glow_renderer::AutoRenderer;
 
+use crate::ColorPalette;
+
 use super::screen;
 
 const GL_VERTEX_TOP_MARGIN: f32 =
@@ -12,8 +14,7 @@ pub unsafe fn update_render(
     buffer: &mut [u8; screen::WIDTH * screen::HEIGHT * 3],
     texture: &glow::Texture,
     screen_data: &[u64; screen::HEIGHT],
-    color_enabled_pixels: &mint::Vector3<f32>,
-    color_disabled_pixels: &mint::Vector3<f32>,
+    active_palette: &ColorPalette,
 ) {
     // Update the buffer data
     let mut buff_idx = 0;
@@ -23,9 +24,9 @@ pub unsafe fn update_render(
             let pixel_on = (row & mask) != 0;
 
             let color = if pixel_on {
-                color_enabled_pixels
+                active_palette.enabled_px
             } else {
-                color_disabled_pixels
+                active_palette.disabled_px
             };
 
             buffer[buff_idx] = ((color.x) * 0xFF as f32) as u8;

@@ -2,6 +2,8 @@ use imgui::Condition;
 use imgui::ItemHoveredFlags;
 use sdl2::video::SwapInterval;
 
+use lazy_static::lazy_static;
+
 use glow::HasContext;
 use imgui::Context;
 use imgui_glow_renderer::glow;
@@ -13,6 +15,7 @@ use sdl2::event::Event;
 mod core;
 use core::beep;
 use core::{cpu::Cpu, screen};
+use std::borrow::Cow;
 use std::fs;
 use std::time::Instant;
 
@@ -90,7 +93,6 @@ const WINDOW_WIDTH: usize = screen::WIDTH * SCALE;
 const WINDOW_HEIGHT: usize = screen::HEIGHT * SCALE + MENU_BAR_HEIGHT;
 
 fn main() {
-    let mut loaded_rom = false;
     // Initialize SDL2 window
     let sdl = sdl2::init().unwrap();
     let video_subsystem = sdl.video().unwrap();
@@ -150,8 +152,8 @@ fn main() {
 
     let mut last = Instant::now();
 
-    let mut active_schema_id = 0;
-    let mut active_schema: ColorSchema = get_color_schema(active_schema_id).unwrap();
+    let mut active_palette_id = 0;
+    let mut active_palette: ColorPalette = get_color_palette(active_palette_id).unwrap();
 
     let mut running = true;
     'running_loop: while running {
@@ -269,8 +271,7 @@ fn main() {
                                 &mut buffer,
                                 &tex,
                                 &cpu.screen.0,
-                                &color_enabled_pixels,
-                                &color_disabled_pixels,
+                                &active_palette,
                             );
                         }
                     };
@@ -331,10 +332,24 @@ fn main() {
                         cpu.toggle_beep_enabled();
                     }
                     ui.menu_item("Key bindings");
-                    if let Some(_) = ui.begin_menu("Color schema") {
-                        ui.combo("Selected schema:", &mut active_schema_id, &COLOR_SCHEMAS);
-                        // ui.color_picker3("Enabled pixels", &mut color_enabled_pixels);
-                        // ui.color_picker3("Disabled pixels", &mut color_disabled_pixels);
+                    if let Some(_) = ui.begin_menu("Color palette") {
+                        if ui.combo(
+                            "Active",
+                            &mut active_palette_id,
+                            COLOR_PALETTES.as_ref(),
+                            |e| Cow::from(e.name),
+                        ) {
+                            if let Some(palette) = get_color_palette(active_palette_id) {
+                                active_palette = palette;
+                            } else {
+                                active_palette.name = "Custom";
+                            }
+                        }
+
+                        if active_palette.name == "Custom" {
+                            ui.color_picker3("Enabled pixels", &mut active_palette.enabled_px);
+                            ui.color_picker3("Disabled pixels", &mut active_palette.disabled_px);
+                        }
                     }
                     ui.separator();
                     ui.menu_item_config("Advanced").enabled(false).build();
@@ -406,8 +421,7 @@ fn main() {
                 &mut buffer,
                 &tex,
                 &cpu.screen.0,
-                &color_enabled_pixels,
-                &color_disabled_pixels,
+                &active_palette,
             );
 
             // Clear and draw the screen
@@ -440,62 +454,45 @@ fn rom_select_window(cpu: &mut Cpu) {
     }
 }
 
-struct ColorSchema {
-    name: &'static str,
-    enabled_px: Vector3<f32>,
-    disabled_px: Vector3<f32>,
+#[derive(Copy, Clone)]
+struct ColorPalette {
+    pub name: &'static str,
+    pub enabled_px: Vector3<f32>,
+    pub disabled_px: Vector3<f32>,
 }
 
-impl ColorSchema {
-    pub fn new(name: &'static str, enabled: [f32; 3], disabled: [f32; 3]) -> ColorSchema {
-        ColorSchema {
+impl ColorPalette {
+    pub fn new(name: &'static str, enabled: [u8; 3], disabled: [u8; 3]) -> ColorPalette {
+        ColorPalette {
             name,
-            enabled_px: Vector3::from_slice(&enabled),
-            disabled_px: Vector3::from_slice(&disabled),
+            enabled_px: Vector3::from_slice(&[
+                enabled[0] as f32 / 255.0,
+                enabled[1] as f32 / 255.0,
+                enabled[2] as f32 / 255.0,
+            ]),
+            disabled_px: Vector3::from_slice(&[
+                disabled[0] as f32 / 255.0,
+                disabled[1] as f32 / 255.0,
+                disabled[2] as f32 / 255.0,
+            ]),
         }
     }
-    pub fn clone(&self) -> ColorSchema {
-        ColorSchema::new(
-            self.name,
-            [self.enabled_px.x, self.enabled_px.y, self.enabled_px.z],
-            [self.disabled_px.x, self.disabled_px.y, self.disabled_px.z],
-        )
-    }
 }
 
-static COLOR_SCHEMAS: [ColorSchema; 2] = [
-    ColorSchema {
-        name: "Default",
-        enabled_px: Vector3 {
-            x: 1.0,
-            y: 1.0,
-            z: 1.0,
-        },
-        disabled_px: Vector3 {
-            x: 1.0,
-            y: 1.0,
-            z: 1.0,
-        },
-    },
-    ColorSchema {
-        name: "Orange",
-        enabled_px: Vector3 {
-            x: 1.0,
-            y: 1.0,
-            z: 1.0,
-        },
-        disabled_px: Vector3 {
-            x: 1.0,
-            y: 1.0,
-            z: 1.0,
-        },
-    },
+lazy_static! {
+#[rustfmt::skip]
+static ref COLOR_PALETTES: [ColorPalette; 3] = [
+    ColorPalette::new("Default", [255, 255, 255], [0, 0, 0]),
+    ColorPalette::new("Inverted", [0, 0, 0], [255, 255,255]),
+    ColorPalette::new("Custom", [0, 0, 0], [0, 0, 0]), // TODO: Make custom saveable via a config
 ];
+}
 
-fn get_color_schema(idx: usize) -> Option<ColorSchema> {
-    if let Some(schema) = COLOR_SCHEMAS.get(idx) {
-        Some(schema.clone())
-    } else {
-        None
+fn get_color_palette(idx: usize) -> Option<ColorPalette> {
+    if let Some(palette) = COLOR_PALETTES.get(idx) {
+        if palette.name != "Custom" {
+            return Some(palette.clone());
+        }
     }
+    None
 }

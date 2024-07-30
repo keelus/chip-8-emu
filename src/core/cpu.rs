@@ -7,13 +7,8 @@
 //
 // https://github.com/keelus/chip-8-emu
 
-use std::{
-    borrow::BorrowMut,
-    ops::Shr,
-    time::{Duration, Instant},
-};
+use std::{borrow::BorrowMut, ops::Shr, time::Instant};
 
-use imgui_glow_renderer::glow::PROGRAM_BINARY_LENGTH;
 use rand::Rng;
 
 use crate::core::screen;
