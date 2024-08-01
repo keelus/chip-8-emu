@@ -353,7 +353,43 @@ fn main() {
                     }
                     ui.separator();
                     ui.menu_item_config("Advanced").enabled(false).build();
-                    ui.menu_item("Quirks");
+
+                    if let Some(_) = ui.begin_menu("Quirks") {
+                        if ui
+                            .menu_item_config("Shift operations against Vy instead of Vx register.")
+                            .selected(cpu.shifts_against_vy)
+                            .build()
+                        {
+                            cpu.shifts_against_vy = !cpu.shifts_against_vy
+                        }
+
+                        if ui
+                            .menu_item_config(
+                                "Memory load/save operations (fx55, fx65) increment I register.",
+                            )
+                            .selected(cpu.memory_load_save_increment_i)
+                            .build()
+                        {
+                            cpu.memory_load_save_increment_i = !cpu.memory_load_save_increment_i
+                        }
+
+                        if ui
+                            .menu_item_config("Sprite clipping instead of wrapping.")
+                            .selected(cpu.sprite_clipping)
+                            .build()
+                        {
+                            cpu.sprite_clipping = !cpu.sprite_clipping
+                        }
+
+                        if ui
+                            .menu_item_config("Jump instructions to V0+NNN instead of VX+NN.")
+                            .selected(cpu.jump_to_nnn)
+                            .build()
+                        {
+                            cpu.jump_to_nnn = !cpu.jump_to_nnn
+                        }
+                    }
+
                     menu.end();
                 }
 

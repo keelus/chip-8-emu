@@ -21,22 +21,6 @@ use super::{
     screen::Screen,
 };
 
-// If true, shift operations will shift Vy's value, storing
-// the result in Vx.
-// If false, shift operations will shift Vx's value, storing
-// the result in Vx.
-const SHIFTS_AGAINST_VY: bool = true;
-
-// Define whether instructions fx55 and fx65 increment I or not.
-const MEMORY_LOAD_SAVE_INCREMENT_I: bool = true;
-
-// If clipping is disabled, sprites will wrap around.
-const CLIPPING: bool = true;
-
-// 0 -> NNN (JP to NNN + V0)
-// 1 -> xNN (JP to NN + Vx) // Use with care!
-const JP_BEHAVIOUR: u8 = 0;
-
 pub struct Cpu {
     pub registers: Registers,
     pub memory: Memory,
@@ -52,6 +36,24 @@ pub struct Cpu {
 
     pub draws_per_second: u32,
     pub ticks_per_frame: u32,
+
+    // Quirks
+
+    // If true, shift operations will shift Vy's value, storing
+    // the result in Vx.
+    // If false, shift operations will shift Vx's value, storing
+    // the result in Vx.
+    pub shifts_against_vy: bool, // Default: true
+
+    // Define whether instructions fx55 and fx65 increment I or not.
+    pub memory_load_save_increment_i: bool, // Default: true
+
+    // If clipping is disabled, sprites will wrap around.
+    pub sprite_clipping: bool, // Default: true
+
+    // If true -> NNN (JP to NNN + V0)
+    // If false -> xNN (JP to NN + Vx) // Use with care!
+    pub jump_to_nnn: bool, // Default: True
 }
 
 impl Cpu {
@@ -71,6 +73,11 @@ impl Cpu {
 
             draws_per_second: 60,
             ticks_per_frame: 10,
+
+            shifts_against_vy: true,
+            memory_load_save_increment_i: true,
+            sprite_clipping: true,
+            jump_to_nnn: true,
         }
     }
 
@@ -252,7 +259,7 @@ impl Cpu {
                 let value;
                 let mut vx = self.registers.v[x as usize];
 
-                if SHIFTS_AGAINST_VY {
+                if self.shifts_against_vy {
                     let y = instruction.y();
                     let vy = self.registers.v[y as usize];
                     value = vy;
@@ -282,7 +289,7 @@ impl Cpu {
                 let value;
                 let mut vx = self.registers.v[x as usize];
 
-                if SHIFTS_AGAINST_VY {
+                if self.shifts_against_vy {
                     let y = instruction.y();
                     let vy = self.registers.v[y as usize];
                     value = vy;
@@ -316,7 +323,7 @@ impl Cpu {
 
                 let pc: u16;
 
-                if JP_BEHAVIOUR == 0 {
+                if self.jump_to_nnn {
                     let nnn = instruction.nnn();
                     let v0 = self.registers.v[0] as u16;
                     pc = nnn.wrapping_add(v0);
@@ -365,7 +372,7 @@ impl Cpu {
                     let addr = i.wrapping_add(idx);
                     let mut data = (self.memory.read(addr) as u64) << 56;
 
-                    if CLIPPING {
+                    if self.sprite_clipping {
                         data = data.shr(x as u32);
                     } else {
                         data = data.rotate_right(x as u32);
@@ -376,7 +383,7 @@ impl Cpu {
 
                     y += 1;
                     if y >= screen::HEIGHT as u8 {
-                        if CLIPPING {
+                        if self.sprite_clipping {
                             break;
                         } else {
                             y = 0;
@@ -474,7 +481,7 @@ impl Cpu {
                     addr += 1;
                 }
 
-                if MEMORY_LOAD_SAVE_INCREMENT_I {
+                if self.memory_load_save_increment_i {
                     self.registers.i = addr;
                 }
             }
@@ -488,7 +495,7 @@ impl Cpu {
                     addr += 1;
                 }
 
-                if MEMORY_LOAD_SAVE_INCREMENT_I {
+                if self.memory_load_save_increment_i {
                     self.registers.i = addr;
                 }
             }
@@ -553,7 +560,7 @@ mod instruction_tests {
 
     use rand::Rng;
 
-    use crate::core::cpu::{Cpu, SHIFTS_AGAINST_VY};
+    use crate::core::cpu::Cpu;
 
     #[test]
     fn test_cls_00e0() {
@@ -782,7 +789,7 @@ mod instruction_tests {
     fn test_shr_8xy6_no_carry() {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x80, 0x16], 0x0200);
-        if SHIFTS_AGAINST_VY {
+        if cpu.shifts_against_vy {
             cpu.registers.v[0x1] = 0b01111110;
         } else {
             cpu.registers.v[0x0] = 0b01111110;
@@ -796,7 +803,7 @@ mod instruction_tests {
     fn test_shr_8xy6_carry() {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x80, 0x16], 0x0200);
-        if SHIFTS_AGAINST_VY {
+        if cpu.shifts_against_vy {
             cpu.registers.v[0x1] = 0b00111111;
         } else {
             cpu.registers.v[0x0] = 0b00111111;
@@ -833,7 +840,7 @@ mod instruction_tests {
     fn test_shl_8xye_no_carry() {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x80, 0x1E], 0x0200);
-        if SHIFTS_AGAINST_VY {
+        if cpu.shifts_against_vy {
             cpu.registers.v[0x1] = 0b01111110;
         } else {
             cpu.registers.v[0x0] = 0b01111110;
@@ -846,7 +853,7 @@ mod instruction_tests {
     fn test_shl_8xye_carry() {
         let mut cpu = Cpu::new();
         cpu.load_rom(vec![0x80, 0x1E], 0x0200);
-        if SHIFTS_AGAINST_VY {
+        if cpu.shifts_against_vy {
             cpu.registers.v[0x1] = 0b11111100;
         } else {
             cpu.registers.v[0x0] = 0b11111100;
