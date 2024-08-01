@@ -288,13 +288,6 @@ fn main() {
                         }
                     };
                     ui.separator();
-                    ui.menu_item_config("Load state")
-                        .shortcut("Ctrl + L")
-                        .build();
-                    ui.menu_item_config("Save state")
-                        .shortcut("Ctrl + S")
-                        .build();
-                    ui.separator();
                     if ui.menu_item("Exit") {
                         running = false;
                     }
@@ -322,9 +315,9 @@ fn main() {
                         && ui.is_item_hovered_with_flags(ItemHoveredFlags::ALLOW_WHEN_DISABLED)
                     {
                         if !cpu.rom_loaded {
-                            ui.tooltip_text("Please load a ROM first.");
+                            ui.tooltip_text("Load a ROM first.");
                         } else {
-                            ui.tooltip_text("Please halt the emulation first.");
+                            ui.tooltip_text("Halt the emulation first.");
                         }
                     }
                 }
