@@ -17,6 +17,7 @@ use core::beep;
 use core::{cpu::Cpu, screen};
 use std::borrow::Cow;
 use std::fs;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use mint::*;
@@ -137,6 +138,7 @@ fn main() {
 
     // Setup Chip-8 and sound
     let mut cpu = Cpu::new();
+    let mut loaded_rom_path: Option<PathBuf> = None;
 
     let desired_spec = AudioSpecDesired {
         freq: Some(22_100),
@@ -256,8 +258,18 @@ fn main() {
                         .shortcut("Ctrl + O")
                         .build();
                     if btn {
-                        rom_select_window(&mut cpu);
+                        loaded_rom_path = rom_select_window(&mut cpu);
                     }
+                    if ui
+                        .menu_item_config("Restart ROM")
+                        .shortcut("Ctrl + R")
+                        .enabled(cpu.rom_loaded)
+                        .build()
+                    {
+                        let rom = fs::read(loaded_rom_path.as_ref().unwrap()).unwrap();
+                        cpu.clear();
+                        cpu.load_rom(rom, PROGRAM_BEGIN);
+                    };
                     if ui
                         .menu_item_config("Close ROM")
                         .shortcut("Ctrl + W")
@@ -442,7 +454,7 @@ fn main() {
                     io.display_size[1] / 2.0 + 15.0,
                 ]);
                 if ui.button_with_size("Load ROM", size) {
-                    rom_select_window(&mut cpu);
+                    loaded_rom_path = rom_select_window(&mut cpu);
                 }
             }
         });
@@ -477,7 +489,7 @@ fn main() {
     }
 }
 
-fn rom_select_window(cpu: &mut Cpu) {
+fn rom_select_window(cpu: &mut Cpu) -> Option<PathBuf> {
     let path = std::env::current_dir().unwrap();
     let res = rfd::FileDialog::new()
         .add_filter("ch8", &["ch8"])
@@ -485,9 +497,12 @@ fn rom_select_window(cpu: &mut Cpu) {
         .pick_file();
 
     if let Some(file_path) = res {
-        let rom = fs::read(file_path).unwrap();
+        let rom = fs::read(file_path.clone()).unwrap();
         cpu.load_rom(rom, PROGRAM_BEGIN);
+        return Some(file_path);
     }
+
+    None
 }
 
 #[derive(Copy, Clone)]

@@ -22,18 +22,22 @@ use super::{
 };
 
 pub struct Cpu {
+    // Main parts
     pub registers: Registers,
     pub memory: Memory,
     pub screen: Screen,
     pub keypad: Keypad,
 
+    // Sound related
     pub beep_handler: Option<Box<dyn BeepHandler>>,
     beep_enabled: bool,
 
+    // Misc
     pub rom_loaded: bool,
     last_draw: Option<Instant>,
     halted: bool,
 
+    // Speed configuration
     pub draws_per_second: u32,
     pub ticks_per_frame: u32,
 
@@ -94,7 +98,6 @@ impl Cpu {
         self.keypad = Keypad::new();
         self.rom_loaded = false;
         self.last_draw = None;
-        self.halted = false;
         self.handle_beep();
     }
 
