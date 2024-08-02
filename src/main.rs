@@ -157,6 +157,9 @@ fn main() {
     let mut active_palette_id = 0;
     let mut active_palette: ColorPalette = get_color_palette(active_palette_id).unwrap();
 
+    let mut vsync_enabled = true;
+    let mut max_fps: u32 = 200;
+
     let mut running = true;
     'running_loop: while running {
         let now = Instant::now();
@@ -294,40 +297,37 @@ fn main() {
                     menu.end();
                 }
 
-                let inspect_enabled = cpu.is_halted() && cpu.rom_loaded;
-                {
-                    if let Some(_) = ui.begin_menu_with_enabled("Ispect", inspect_enabled) {
-                        if let Some(_) = ui.begin_menu("Memory") {
-                            ui.menu_item("View");
-                            ui.menu_item("Edit");
-                        }
-                        if let Some(_) = ui.begin_menu("Registers") {
-                            ui.menu_item("View");
-                            ui.menu_item("Edit");
-                        }
-                        if let Some(_) = ui.begin_menu("Stack") {
-                            ui.menu_item("View");
-                            ui.menu_item("Edit");
-                        }
-                    }
-
-                    if !inspect_enabled
-                        && ui.is_item_hovered_with_flags(ItemHoveredFlags::ALLOW_WHEN_DISABLED)
-                    {
-                        if !cpu.rom_loaded {
-                            ui.tooltip_text("Load a ROM first.");
-                        } else {
-                            ui.tooltip_text("Halt the emulation first.");
-                        }
-                    }
-                }
-                //disabled_scope.end();
-
                 if let Some(menu) = ui.begin_menu("Options") {
                     ui.menu_item_config("Main options").enabled(false).build();
-                    if let Some(_) = ui.begin_menu("Timings") {
+                    if let Some(_) = ui.begin_menu("Timings & display") {
+                        ui.text("Emulation and draw timings");
                         ui.slider("Draws per second", 30, 400, &mut cpu.draws_per_second);
                         ui.slider("Ticks/cycles per frame", 1, 500, &mut cpu.ticks_per_frame);
+
+                        let cur_cursor = ui.cursor_pos();
+                        ui.set_cursor_pos(Vector2 {
+                            x: cur_cursor[0],
+                            y: cur_cursor[1] + 20.0,
+                        });
+                        ui.separator();
+                        ui.text("Display/window framerates");
+                        if ui.checkbox(&"VSync", &mut vsync_enabled) {
+                            if vsync_enabled {
+                                let _ = video_subsystem.gl_set_swap_interval(SwapInterval::VSync);
+                            } else {
+                                let _ =
+                                    video_subsystem.gl_set_swap_interval(SwapInterval::Immediate);
+                            }
+                        }
+                        let disabled_region = ui.begin_disabled(vsync_enabled);
+                        {
+                            if ui.input_scalar("Max FPS", &mut max_fps).step(10).build() {
+                                if max_fps < 10 {
+                                    max_fps = 10
+                                }
+                            }
+                        }
+                        disabled_region.end();
                     }
                     if ui
                         .menu_item_config("Sound enabled")
@@ -336,7 +336,6 @@ fn main() {
                     {
                         cpu.toggle_beep_enabled();
                     }
-                    ui.menu_item("Key bindings");
                     if let Some(_) = ui.begin_menu("Color palette") {
                         if ui.combo(
                             "Active",
@@ -477,8 +476,11 @@ fn main() {
 
         cpu.tick();
 
-        // Although VSync is present, ensure we don't get more than 100fps
-        timer_subsystem.delay(10); // 1000ms / 100fps = 10ms
+        if !vsync_enabled {
+            if max_fps < 1000 {
+                timer_subsystem.delay(1000 / max_fps);
+            }
+        }
     }
 }
 
@@ -525,9 +527,11 @@ impl ColorPalette {
 
 lazy_static! {
 #[rustfmt::skip]
-static ref COLOR_PALETTES: [ColorPalette; 3] = [
-    ColorPalette::new("Default", [255, 255, 255], [0, 0, 0]),
-    ColorPalette::new("Inverted", [0, 0, 0], [255, 255,255]),
+static ref COLOR_PALETTES: [ColorPalette; 5] = [
+    ColorPalette::new("Default", [242, 251, 235], [23, 18, 25]),
+    ColorPalette::new("Inverted", [23, 18, 25], [242, 251, 235]),
+    ColorPalette::new("Brown", [253, 203, 85], [63, 41, 30]),
+    ColorPalette::new("Red", [204, 14, 19], [43, 0, 0]),
     ColorPalette::new("Custom", [0, 0, 0], [0, 0, 0]), // TODO: Make custom saveable via a config
 ];
 }
