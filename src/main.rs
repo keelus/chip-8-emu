@@ -1,32 +1,33 @@
-use imgui::Condition;
-use imgui::ItemHoveredFlags;
-use sdl2::video::SwapInterval;
+//  _             _
+// | |           | |
+// | | _____  ___| |_   _ ___
+// | |/ / _ \/ _ \ | | | / __|
+// |   <  __/  __/ | |_| \__ \
+// |_|\_\___|\___|_|\__,_|___/
+//
+// https://github.com/keelus/chip-8-emu
 
 use lazy_static::lazy_static;
+use std::{borrow::Cow, fs, path::PathBuf, time::Instant};
 
 use glow::HasContext;
-use imgui::Context;
-use imgui_glow_renderer::glow;
-use imgui_glow_renderer::AutoRenderer;
+use imgui::{Condition, Context};
+use imgui_glow_renderer::{glow, AutoRenderer};
 use imgui_sdl2_support::SdlPlatform;
+use mint::{Vector2, Vector3};
 use rfd;
-use sdl2::event::Event;
+
+use sdl2::{
+    audio::{AudioCallback, AudioDevice, AudioSpecDesired},
+    event::Event,
+    keyboard::Keycode,
+    video::SwapInterval,
+    AudioSubsystem,
+};
 
 mod core;
-use core::beep;
-use core::{cpu::Cpu, screen};
-use std::borrow::Cow;
-use std::fs;
-use std::path::PathBuf;
-use std::time::Instant;
-
-use mint::*;
-
-use sdl2::audio::{AudioCallback, AudioDevice, AudioSpecDesired};
-use sdl2::keyboard::Keycode;
-use sdl2::AudioSubsystem;
-
 mod graphics;
+use core::{beep, cpu::Cpu, screen};
 
 // Sample SquareWave struct code from SDL2's example
 struct SquareWave {
@@ -257,7 +258,7 @@ fn main() {
                 if let Some(menu) = ui.begin_menu("File") {
                     let btn = ui
                         .menu_item_config("Load ROM")
-                        .enabled(!cpu.rom_loaded)
+                        .enabled(!cpu.is_rom_loaded())
                         .shortcut("Ctrl + O")
                         .build();
                     if btn {
@@ -266,7 +267,7 @@ fn main() {
                     if ui
                         .menu_item_config("Restart ROM")
                         .shortcut("Ctrl + R")
-                        .enabled(cpu.rom_loaded)
+                        .enabled(cpu.is_rom_loaded())
                         .build()
                     {
                         let rom = fs::read(loaded_rom_path.as_ref().unwrap()).unwrap();
@@ -276,7 +277,7 @@ fn main() {
                     if ui
                         .menu_item_config("Close ROM")
                         .shortcut("Ctrl + W")
-                        .enabled(cpu.rom_loaded)
+                        .enabled(cpu.is_rom_loaded())
                         .build()
                     {
                         cpu.clear();
@@ -432,7 +433,7 @@ fn main() {
             }
             main_menu.end();
 
-            if !cpu.rom_loaded {
+            if !cpu.is_rom_loaded() {
                 let no_rom_msg = "No ROM loaded!";
                 let text_size = ui.calc_text_size(no_rom_msg);
                 ui.set_cursor_pos([

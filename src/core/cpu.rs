@@ -7,6 +7,7 @@
 //
 // https://github.com/keelus/chip-8-emu
 
+#![allow(dead_code)]
 use std::{borrow::BorrowMut, ops::Shr, time::Instant};
 
 use rand::Rng;
@@ -29,11 +30,11 @@ pub struct Cpu {
     pub keypad: Keypad,
 
     // Sound related
-    pub beep_handler: Option<Box<dyn BeepHandler>>,
+    beep_handler: Option<Box<dyn BeepHandler>>,
     beep_enabled: bool,
 
     // Misc
-    pub rom_loaded: bool,
+    rom_loaded: bool,
     last_draw: Option<Instant>,
     halted: bool,
 
@@ -507,6 +508,10 @@ impl Cpu {
 
         self.registers.pc += 2;
         self.handle_beep();
+    }
+
+    pub fn is_rom_loaded(&self) -> bool {
+        self.rom_loaded
     }
 
     pub fn is_halted(&self) -> bool {

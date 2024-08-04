@@ -30,7 +30,6 @@ const HEX_SPRITES: [[u8; 5]; 16] = [
     [0xF0, 0x80, 0xF0, 0x80, 0x80], // F
 ];
 
-pub const HEX_SPRITES_WIDTH: u8 = 8;
 pub const HEX_SPRITES_HEIGHT: u8 = 5;
 pub const HEX_SPRITES_START_MEM: u16 = 0x0000;
 

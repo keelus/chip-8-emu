@@ -1,10 +1,16 @@
+//  _             _
+// | |           | |
+// | | _____  ___| |_   _ ___
+// | |/ / _ \/ _ \ | | | / __|
+// |   <  __/  __/ | |_| \__ \
+// |_|\_\___|\___|_|\__,_|___/
+//
+// https://github.com/keelus/chip-8-emu
+
 use glow::HasContext;
-use imgui_glow_renderer::glow;
-use imgui_glow_renderer::AutoRenderer;
+use imgui_glow_renderer::{glow, AutoRenderer};
 
-use crate::ColorPalette;
-
-use super::screen;
+use crate::{screen, ColorPalette};
 
 const GL_VERTEX_TOP_MARGIN: f32 =
     (super::WINDOW_HEIGHT - super::MENU_BAR_HEIGHT) as f32 / super::WINDOW_HEIGHT as f32;
